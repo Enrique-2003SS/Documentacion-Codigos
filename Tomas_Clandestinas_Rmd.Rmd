@@ -1,0 +1,245 @@
+---
+title: "Tomas Clandestinas Mapa"
+author: "Eduardo Alanis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+Este documento explica paso a paso cómo funciona el código de Tomas Clandestinas para crear el mapa web. Se asume que ya usaste antes el código para actualizar los datos.
+
+Asi que primero cargamos las librerias que vamos ha usar:
+```{r librerias, message=FALSE, warning=FALSE}
+library(sf)
+library(raster)
+library(leaflet)
+library(leaflet.extras)
+library(leaflet.extras2)
+library(leaflegend)
+library(leafem)
+library(htmltools)
+library(htmlwidgets)
+```
+
+
+Vamos a trabajar con tres archivos:
+
+- **Tomas_clandestinas.shp:** contiene las tomas clandestinas.
+- **Colonias_zmp.shp:** contiene los polígonos de algunas colonias.
+- **Padron_Mar24.shp:** contiene el padrón de beneficiarios.
+
+Ahora, vamos a abrir estos archivos para empezar a trabajar.
+```{r abrir_archivos}
+shape = sf::read_sf("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/SIGEH_C_Analisis_Tomas_Clandestinas_Marzo2025-B_060525_JES/Datos/Tomas Clandestinas/Actualizado Join/tomas_clandestinas.shp")
+colonias = sf::read_sf("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/SIGEH_C_Analisis_Tomas_Clandestinas_Marzo2025-B_060525_JES/Datos/Colonias/Colonias_zmp.shp")
+padron = sf::read_sf("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/SIGEH_C_Analisis_Tomas_Clandestinas_Marzo2025-B_060525_JES/Datos/Padron Beneficiarios/Padron_Mar24/Padron_Mar24.shp")
+```
+
+Vamos a definir las variables necesarias para crear el **mapa de calor** de las **tomas clandestinas** y **padron de beneficiarios**.
+
+Aunque solo se necesitan los puntos (coordenadas) y no es estrictamente necesario unirlos a la base de datos original, prefiero crear dos nuevas columnas nuevas que contengan estas coordenadas. Esto ayuda a mantener un mejor orden y claridad entre los datos y lo que se está graficando.
+
+En el caso del padrón de beneficiarios, ya lo tenemos listo, así que solo aplicaremos el proceso a las tomas clandestinas.Esto se hace de la siguiente manera:
+
+```{r mapa_calor}
+coordenadas = sf::st_coordinates(shape)
+longitud = coordenadas[,1]
+latitud = coordenadas[,2]
+
+shape$longitud = longitud
+shape$latitud = latitud
+```
+
+
+Después, vamos a definir más elementos que formarán parte del mapa.
+Uno de estos elementos es el `modal`, que lo vamos a crear de la siguiente manera:
+```{r modal}
+info.box = HTML(paste0(
+  '<div class="modal fade" id="infobox" role="dialog">',
+  '<div class="modal-dialog">',
+  '<div class="modal-content">',
+  '<div class="modal-header">',
+  '<button type="button" class="close" data-dismiss="modal">&times;</button>',
+  '<h4 class="modal-title">Información Adicional</h4>',
+  '</div>',
+  '<div class="modal-body">',
+  '<h4>Sobre los datos:</h4>',
+  '<ul>',
+  '<li>La última actualización de las tomas clandestinas se realizó en marzo de 2025.</li>',
+  '<li>La última actualización de los datos de usuarios corresponde a marzo de 2024.</li>',
+  '</ul>',
+  '</div>',
+  '<div class="modal-footer">',
+  '<button type="button" class="btn btn-default" data-dismiss="modal">Cerrar</button>',
+  '</div>',
+  '</div>',
+  '</div>',
+  '</div>'
+))
+```
+
+Un `modal` es una ventana emergente que aparece sobre el contenido principal de la página. Se usa para mostrar información adicional sin salir de la vista actual.
+
+Tambien crearemos una paleta continua personalizada de $1000$ colores para uno de los mapas de color.
+
+```{r paleta}
+paleta = c("#E76254FF", "#E76254FF", "#E76254FF", "#E76254FF", "#EF8A47FF","#EF8A47FF","#EF8A47FF","#EF8A47FF", "#F7AA58FF", "#F7AA58FF", "#F7AA58FF", "#F7AA58FF", "#FFD06FFF", "#FFD06FFF", "#FFD06FFF", "#FFD06FFF", "#FFD06FFF", "#FFE6B7FF", "#AADCE0FF","#72BCD5FF","#528FADFF","#376795FF", "#1E466EFF")
+paleta_1000 = colorRampPalette(paleta)(1000)
+```
+
+Vamos a crear **íconos personalizados** que se usarán como **marcadores** en el mapa `leaflet`, en lugar de los marcadores por defecto.
+
+```{r marcadores}
+marker_size_default = 20
+marker_caasim_bien = makeIcon(
+  iconUrl = "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/SIGEH_C_Analisis_Tomas_Clandestinas_Marzo2025-B_060525_JES/Simbologia/bueno.png",
+  iconWidth = marker_size_default, iconHeight = marker_size_default,
+)
+marker_caasim_mal = makeIcon(
+  iconUrl = "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/SIGEH_C_Analisis_Tomas_Clandestinas_Marzo2025-B_060525_JES/Simbologia/malo.png",
+  iconWidth = marker_size_default, iconHeight = marker_size_default,
+)
+```
+
+#### Mapa web
+```{r mapa_web}
+caasim_mapa_web = leaflet() |>
+  setView(-98.77671, 20.09546,zoom = 11) |>
+  addTiles(options = tileOptions(opacity = 0.6,minZoom=8)) |>
+  addPolygons(data=colonias|>st_transform(st_crs("EPSG:4326")),color = "black",fillColor = "black",fillOpacity = 0.1,weight = 1,
+              label = paste0(colonias$COLONIA," - ",colonias$NOM_MUN),group = "Colonias Zona Metropolitana de Pachuca")|>
+  addMarkers(data=padron|>st_transform(st_crs("EPSG:4326"))|>as("Spatial"),clusterOptions = markerClusterOptions(),icon = marker_caasim_bien,group='Usuarios')|>
+  addMarkers(data=shape|>st_transform(st_crs("EPSG:4326"))|>as("Spatial"),clusterOptions = markerClusterOptions(),icon = marker_caasim_mal,group = "Tomas Clandestinas")|>
+  addHeatmap(data = shape, lng=shape$longitud, lat=shape$latitud, blur= 5, max = 1, radius = 15, group = "Densidad de Tomas Clandestinas", gradient = "Reds") |>
+  addHeatmap(data = padron, lng=padron$LONGITUD, lat=padron$LATITUD, blur= 5, max = 1, radius = 10, group = "Densidad de Usuarios", gradient = paleta_1000) |> # Colores YlGnBu
+  addLegendImage(
+    images = c("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/SIGEH_C_Analisis_Tomas_Clandestinas_Marzo2025-B_060525_JES/Simbologia/bueno.png",
+               "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/SIGEH_C_Analisis_Tomas_Clandestinas_Marzo2025-B_060525_JES/Simbologia/malo.png"),
+                 labels = c("Usuarios","Tomas Clandestinas"),title = "Simbología",
+                 width = 20,height = 20,position='bottomright')|>
+  addLayersControl(overlayGroups = c("Colonias Zona Metropolitana de Pachuca","Usuarios","Tomas Clandestinas","Densidad de Usuarios","Densidad de Tomas Clandestinas"),
+                   options = layersControlOptions(collapsed=F))|>
+  addSearchFeatures(targetGroups = "Colonias Zona Metropolitana de Pachuca",
+                    options = searchFeaturesOptions(
+                      zoom = 12, 
+                      openPopup = F,
+                      firstTipSubmit =F))|>
+  hideGroup(c("Densidad de Usuarios","Tomas Clandestinas"))|>
+  addLogo(img = "https://raw.githubusercontent.com/JairEsc/Gob/main/Otros_archivos/imagenes/normal.png", position = "bottomleft", src = "remote", width = 500, height = 51) |>
+  addBootstrapDependency() %>% # Add Bootstrap to be able to use a modal
+  addEasyButton(easyButton(
+    icon = "fa-info-circle", title = "Map Information",
+    onClick = JS("function(btn, map){ $('#infobox').modal('show'); }")
+  )) %>% # Trigger the infobox
+  htmlwidgets::appendContent(info.box) |>
+  htmlwidgets::onRender(
+    "function(el, x) {
+      var map = this;
+
+      // 1) Insertar un mensaje encima del control de capas
+      var layersControl = document.getElementsByClassName('leaflet-control-layers-list')[0];  // Devuelve un HTMLCollection con todos los nodos que tienen esa clase.
+      var instrEmpty = document.createElement('div');   // Crea un <div> vacío en memoria.
+      instrEmpty.style.height = '10px'; // Para dejar un margen visual.
+      instrEmpty.innerHTML = ' ';  // Ponemos un espacio como contenido, para asegurar que el <div> no colapse totalmente.
+      var instr = document.createElement('span'); // Línea que contendrá el mensaje.
+      instr.style.fontSize = '16px';  
+      instr.innerHTML = 'Activa/Desactiva capas haciendo click en la casilla';
+      layersControl.insertBefore(instrEmpty, layersControl.firstChild);  // Inserta newNode justo antes de referenceNode.
+      layersControl.insertBefore(instr, layersControl.firstChild);
+
+      // 2) Capturamos los inputs de overlay (checkboxes)
+      var overlayPane = document.getElementsByClassName('leaflet-control-layers-overlays')[0];    // Contenedor específico de las capas superpuestas.
+      var inputs = overlayPane.querySelectorAll('input');                                        // Obtiene un NodeList de todos los <input> (checkboxes) dentro de ese pane.
+      var density_tomas_Input, clandestinasInput;                                                      // Declaramos dos variables para guardar luego los nodos relevantes.
+
+      inputs.forEach(function(input) {
+        var label = input.nextSibling.textContent.trim();     // Apuntador
+        if (label === 'Densidad de Tomas Clandestinas') {
+          density_tomas_Input = input;
+        }
+        if (label === 'Tomas Clandestinas') {
+          clandestinasInput = input;  
+          clandestinasInput.style.height = '0px';
+
+        }
+      });
+
+      // 3) Al hacer zoom comprobamos y 'hacemos click'
+      map.on('zoomend', function() {
+        if (map.getZoom() > 14 && density_tomas_Input.checked && !clandestinasInput.checked) {
+          clandestinasInput.click();
+          clandestinasInput.style.height = '100%';
+        } else if (map.getZoom() < 14 && !density_tomas_Input.checked && clandestinasInput.checked){
+            density_tomas_Input.click();
+            clandestinasInput.click();
+            clandestinasInput.style.height = '0px';
+        } else if (map.getZoom() < 14 && density_tomas_Input.checked && clandestinasInput.checked){
+            clandestinasInput.click();
+            clandestinasInput.style.height = '0px';
+        }
+      });
+    }"
+  )
+```
+
+
+En esta sección te explicaremos con claridad cómo funciona el código anterior, pero sin entrar en detalle en las funciones que listamos a continuación:
+
+- `leaflet()`
+- `setView()`
+- `addTiles()`
+- `addPolygons()`
+- `addMarkers()`
+- `addHeatmap()`
+- `addLegendImage()`
+- `addLayersControl()`
+- `addSearchFeatures()`
+- `hideGroup()`
+- `addLogo()`
+
+Si quieres profundizar en esas funciones, consulta la **documentación** del mapa web de **Incidentes con Fauna Feral**.
+
+Empezemos con el apartado de `addEasyButton`:
+
+1. **Preparar los iconos de Bootstrap/Font Awesome**
+  - Antes de nada cargamos la dependencia de Bootstrap (con `addBootstrapDependency())` para poder usar sus estilos(iconos en este caso).
+
+2. **Crear el botón flotante**
+  - `easyButton(...)` construye el botón y define:
+    - icon: pasar el icono que va aparecer.
+    - title: mensaje al poner el cursor encima.
+    - onClick: código JavaScript que se ejecuta al hacer clic.
+3. **Qué hace el `onClick`**: Esto es parecido a los `CallBacks` de `Python` en `Dash`
+  - `$('#infobox')` busca en la página el elemento con id “infobox”.
+  - `.modal('show')` le dice a Bootstrap que muestre ese modal
+
+4. **Añadir contenido extra al mapa:** Con la linea de codigo `htmlwidgets::appendContent(info.box)` se agrega el contenido con el que estamos trabajando, en este caso se llama `info.box`
+  
+Vamos a ver la parte de **`htmlwidgets::onRender`**, que es la más compleja. Aquí normalmente se avanza con prueba y error. Cuando tengas el mapa en pantalla, haz clic derecho, elige `“Ìnspect Element”` y luego el ícono de flecha para `“Select a element”`. Con esa herramienta, puedes apuntar a cualquier parte del mapa, ver su estructura en los `<div>` y así entender cómo está construido. Esto te permitirá modificar, eliminar o añadir elementos al mapa. Lo equivalente cuando estas en un navegador como en Google Chrome o Microsoft Edge es pulsar F12.
+
+Aqui voy intentar explicar de la forma mas detallada posible como fue la construccion de esto, dado que es mucha prueba y error.
+
+En la sección **“Insertar un mensaje encima del control de capas”** seguimos estos pasos:
+
+1. **Seleccionar el contenedor principal:**
+    - Usamos el selector `document.getElementsByClassName('leaflet-control-layers-list')[0]` y lo guardamos en la variable `layersControl`. Este es el elemento padre donde van todos los controles de capas. Se supo que este por estar inspeccionando la pagina.
+2. **Crear un contenedor vacío para el mensaje:**
+    - Creamos un ´<div>´ nuevo y lo llamamos instrEmpty.
+    - Le asignamos altura (`instrEmpty.style.height = '...'`) y contenido vacío (`instrEmpty.innerHTML = ''`).
+    Esto nos da un espacio en blanco para luego añadir el mensaje sin romper el diseño.
+3. **Definir el mensaje:**
+    - Creamos otra variable, `instr`, que será el `<div>` que contiene nuestro texto.
+    - Ajustamos su tamaño de fuente (`instr.style.fontSize = '...'`) y ponemos el texto que queremos mostrar (`instr.innerHTML = 'Tu mensaje aquí'`).
+4. **Insertar el mensaje en el control de capas:**
+    - Haciendo uso de `.insertBefore`, con esto colocamos primero el espacio en blanco y luego nuestro mensaje justo encima de la lista de capas.
+
+De manera analoga un poco con los siguientes dos apartados... (Pendiente de terminar)
+
+Finalmente visualizamos el mapa que generamos de la siguiente forma:
+```{r ver_mapa}
+caasim_mapa_web
+```
+
+Finalmente guardamos el mapa web:
+```{r guardar}
+saveWidget(caasim_mapa_web,"C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/SIGEH_C_Analisis_Tomas_Clandestinas_Marzo2025-B_060525_JES/mapa_web_tomas_clandestinas_CAASIM_2025.html",selfcontained = F,title = "Análisis Tomas Clandestinas")  
+```
