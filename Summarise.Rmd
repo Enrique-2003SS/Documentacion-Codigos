@@ -1,0 +1,210 @@
+---
+title: "Funciones de R"
+author: "Eduardo Alanis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Explicación de algunas funciones en R  
+
+Las indicaciones iniciales son las siguientes:
+**Haz un conteo del número de beneficiarias por localidad  y una suma de monto de inversión.**
+
+La base de datos que vamos a usar fue convertida de un PDF a un archivo de Excel. Por eso, puede haber algunos problemas, como columnas que se juntaron, espacios extras o que las columnas no se detectaron bien.
+
+
+<img src="C:/Users/SIGEH/Desktop/Lalo/Gob/Documentacion Codigos/Summarize/Imagenes/pdf.png" width="800" alt="Mapa del sitio">
+
+
+Lo primero que vamos hacer es cargar la base de datos:
+```{r base_datos, warning=FALSE, message=FALSE}
+datos = readxl::read_excel("C:/Users/SIGEH/Desktop/Lalo/Gob/Documentacion Codigos/Summarize/Datos/24_MM_PUB_4t.xlsx")
+```
+
+Primero observamos como esta la base de datos:
+
+<img src="C:/Users/SIGEH/Desktop/Lalo/Gob/Documentacion Codigos/Summarize/Imagenes/Base de datos.png" width="800" alt="Mapa del sitio">
+
+
+Nos dimos cuenta de que algunas columnas están unidas, o al menos así parecen. Pero eso no nos conviene, así que las vamos a separar. También vamos a renombrar las dos primeras columnas
+```{r renombrar_12, warning=FALSE, message=FALSE}
+colnames(datos)[1:2] = c("No", "cve_ent")
+```
+En la columna `cve_ent`, los datos vienen así: `13 Hidalgo`. Vamos a separarlos en dos partes: `13` como una columna y `Hidalgo` como otra.
+
+Entonces vamos hacerlo de la siguiente forma:
+```{r cve_ent, warning=FALSE, message=FALSE}
+datos = datos |> 
+  dplyr::mutate(cve_ent = gsub("Hidalgo", "", cve_ent),
+                cve_ent = stringr::str_trim(cve_ent))
+
+```
+
+La función `gsub` busca la palabra `"Hidalgo"` y la remplaza por `""`, en otras palabras la elimina por completo, sin dejar ningún espacio. Después usamos la función `str_trim` de la librería `stringr` para quitar los espacios que estén al principio y al final del texto. Esto es útil porque, cuando juntamos palabras o textos usando `paste` o `paste0`, esos espacios pueden causar problemas, ademas cuando agrupamos tambien pueden existir dicho problema.
+
+Ahora vamos a crear una nueva columna con el nombre de `ent` el cual indicaremos en cada fila que es `Hidalgo`.
+
+```{r anadir_nueva_columna, warning=FALSE, message=FALSE}
+datos = datos |> 
+  dplyr::mutate(ent = "Hidalgo")
+```
+
+Realizaremos algo parecido pero con la columna de `C_Mun`, dado que los datos vienen de la forma ` 063 Tepeji del Río de Ocampo`.
+
+```{r separar_CMun, warning=FALSE, message=FALSE}
+datos = datos |> 
+  dplyr::mutate(C_Mun = substring(C_Mun, first = 1, last = 3)) |>
+  dplyr::rename(cve_mun = C_Mun)
+
+municipios = sf::read_sf("C:/Users/SIGEH/Desktop/Lalo/Gob/Importantes_documentos_usar/Municipios/municipiosjair.shp")
+
+municipios = municipios |> dplyr::select(CVE_MUN, NOM_MUN) |> sf::st_drop_geometry()
+datos = merge(x = datos, y = municipios, by.x = "cve_mun", by.y = "CVE_MUN", all.x = T)
+datos = datos |> dplyr::select(No, cve_ent, ent, cve_mun, NOM_MUN, Localidad:entrega) |> 
+  dplyr::arrange(No) |>
+  dplyr::rename(nom_mun = NOM_MUN)
+```
+
+Se aplicó la función `substring` a la columna `C_Mun` para extraer los primeros $3$ caracteres. Luego, esa nueva columna se renombró como `cve_mun`. 
+
+Tomamos los nombres de los municipios de otra base de datos que sabemos que todos se encuentran escritos de forma correcta. Esa base viene en formato `SHP` (incluye geometría), así que:
+
+1. Abrimos el archivo con la librería `sf`.
+
+2. Con `dplyr` usamos `select()` para quedarnos solo con las columnas que nos interesan.
+
+3. Aplicamos `st_drop_geometry()` para quitar la parte de geometría.
+
+Ademas vamos a usar la función `merge` para unir dos bases de datos. Donde en este caso vamos agregar una solo nueva columna a datos.
+
+- **x y y:** aquí pones los nombres de las dos bases de datos(`data.frame`) que quieres juntar.
+
+- **by.x y by.y:** indicas las columnas de cada `data.frame` que sirven como clave para emparejar filas (los valores que tienen en común).
+
+- **all.x = TRUE:** se asegura de que el `data.frame x` conserve todas sus filas, aunque no haya coincidencias con el `data.frame y`.
+
+
+Después de hacer el `merge`, se realizo lo siguiente:
+
+- **Reordenar columnas:** Usamos `select()` para poner las columnas en el orden que queremos.
+
+- **Ordenar filas:** Con arrange(`No`) hacemos que la columna `No` pase de estar en un orden desordenado (6, 7, 1, 2, 3…) a un orden creciente (1, 2, 3,…).
+
+- **Renombrar columnas:** Finalmente, cambiamos el nombre de la columna que se añadio al hacer el `merge()`.
+
+
+Vamos a realizar algo parecido con la columna de `C_P       Programa Presupuestario` ya que se juntaron estas 2 columnas cuando se realizo la conversion, asi que toca separarla.
+
+```{r separar_C_P_Programa Presupuestario, warning=FALSE, message=FALSE}
+datos = datos |> dplyr::mutate(CP =  `C_P       Programa Presupuestario`,
+                               CP = substr(x = CP, start = 1, stop = 5))
+
+datos = datos |> dplyr::rename(Programa_Presupuestario = `C_P       Programa Presupuestario`) |>
+  dplyr::mutate(Programa_Presupuestario = substr(x = Programa_Presupuestario, start = 6, stop = nchar(Programa_Presupuestario)),
+                Programa_Presupuestario = stringr::str_trim(Programa_Presupuestario)) 
+```
+
+Primero creamos una copia de la columna `C_P       Programa Presupuestario` y la llamamos `CP` para despues  en `CP` usamos `substr` para quedarnos sólo con los primeros 5 caracteres de cada valor. Posteriormente renombramos la columna original `C_P       Programa Presupuestario` como `Programa_Presupuestario`, en En `Programa_Presupuestario` tomamos, con `substr`, los caracteres desde el sexto hasta el final de cada cadena y finalmente usamos `str_trim` para quitar los espacios en blanco si existen de la cadena. 
+
+
+Ahora vamos a trabajar con la columna `Cantidad    Monto           Año`, ya que en ella se combinaron dos columnas por error. Lo que haremos es separarla en dos columnas: una llamada `Cantidad` y otra llamada `Monto`.
+
+```{r separar_ Cantidad_Monto, warning=FALSE, message=FALSE}
+datos = datos |> dplyr::rename(Monto = `Cantidad    Monto           Año`) |>
+  dplyr::mutate(Cantidad = Monto,
+                Cantidad = sub(x = Cantidad, pattern = "\\$.*", replacement = ""),
+                Cantidad = stringr::str_trim(Cantidad))
+
+
+datos = datos |> dplyr::mutate(Monto = sub(x = Monto, pattern = ".*\\$", replacement = ""),
+                               Monto = gsub(x = Monto, pattern = ",", replacement = ""),
+                               Monto = as.numeric(Monto))
+```
+
+
+Renombramos la columna llamada `Cantidad    Monto           Año` como `Monto`. Luego, copiamos esa misma columna en una nueva columna llamada `Cantidad`, después usaremos la función `sub` para quedarnos solo con el texto que está antes del símbolo `$`. Esta función reemplaza todo lo que está después del `$` por una cadena vacía (`""`), es decir, lo elimina. Por último, aplicamos la función `str_trim` para quitar los espacios en blanco que pueda haber al principio o al final del texto.
+
+De manera similar, con la columna `Monto` vamos a extraer solo lo que está después del símbolo `$` usando la función `sub`. Luego, usamos la función `gsub` para eliminar todas las `comas(,)` que puedan tener los valores y finalmente usamos `as.numeric` para convertir ese caracter en un número.
+
+
+
+Ahora vamos a renombrar ciertas columnas y ordenadar la base de datos
+
+```{r renombrar, warning=FALSE, message=FALSE}
+datos = datos |> dplyr::rename(Año_entrega = `_entrega     mes_`,
+                               Mes_entrega = `Entrega     Dia_`,
+                               Dia_entrega = entrega)
+
+
+datos = datos |> dplyr::select(No:Sexo, CP, Programa_Presupuestario, Subprograma, `Vertiente / Apoyo         Descripcion o comentario`, Cantidad, Monto, Año_entrega, Mes_entrega, Dia_entrega)
+```
+
+Usamos la función rename de la librería dplyr para cambiar los nombres de las siguientes columnas:
+
+- `_entrega mes_` → `Año_entrega`
+- `Entrega Dia_` → `Mes_entrega`
+- `entrega` → `Dia_entrega`
+
+Después, utilizamos la función `select` para ordenar las columnas en la base de datos, solo escribimos los nombres de las columnas que queremos conservar, en el orden en que deseamos que aparezcan.
+
+Finalmente limpiados un poco la columna `Localidad`
+```{r limpieza_localidad, warning=FALSE, message=FALSE}
+datos = datos |> dplyr::mutate(Localidad = stringr::str_trim(Localidad),
+                               Localidad = gsub(x = Localidad, pattern = "  ", replacement = " "))
+```
+
+Con la función `str_trim` se quita los espacios en blanco si existen de inicio y final de los caracteres, ademas con la `gsub` indicamos que si existen espacios dobles estos sean remplazados unicamente con un espacio.
+
+
+
+#### Ahora si lo solicitado
+
+Lo que es necesario es crear un ID correcto, para hacer una agrupacion de manera adecuada
+```{r ID, warning=FALSE, message=FALSE}
+datos = datos |> dplyr::mutate(ID = paste0(cve_ent, cve_mun, "-", tolower(stringi::stri_trans_general(Localidad, "Latin-ASCII"))))
+```
+
+
+La forma de construir el ID fue la siguiente:
+
+- Primero vamos a trabajar con la variable `Localidad`. Usaremos la función `stri_trans_general` de la librería `stringi` para quitar los acentos, y luego aplicaremos `tolower` para convertir todo el texto a minúsculas. Esto es útil porque muchas veces las bases de datos se escriben a mano, y pueden tener muchos errores de mayúsculas, minúsculas o acentos dado que los llenas distintas personas. También hay que recordar que antes ya limpiamos los espacios del texto de esta columna.
+- Después, creamos una nueva columna llamada `ID` uniendo (concatenando) las variables `cve_ent`, `cve_mun`, un guion (-) y la variable `localidad`.
+
+
+Vamos agrupar los datos apartir del ID, ademas de solicitar el monto y conteo de los elementos que fueron agrupados
+
+```{r interes, warning=FALSE, message=FALSE}
+interes = datos |> 
+  dplyr::group_by(ID) |> 
+  dplyr::summarise(conteo = dplyr::n(), Monto = sum(Monto))
+```
+
+Lo que hace el codigo es lo siguiente:
+
+1. **Agrupar por ID**
+    - Usamos group_by(ID) para juntar todas las filas que tienen el mismo valor en la columna ID.
+
+2. **Resumir los datos**
+Con summarise() pedimos dos cosas para cada grupo:
+
+    - conteo: cuántas filas hay en ese grupo, usando n().
+
+    - Monto: la suma de la columna Monto dentro de ese grupo, usando sum(Monto).
+
+Al final, interes será una tabla donde cada fila es un ID distinto, junto con el número de veces que aparece (conteo) y la suma de los montos asociados.
+
+
+```{r interes_imprimir}
+interes 
+```
+
+#### Notas:
+
+1. **Diferencia entre sub() y gsub():** Tenemos que `sub()` como `gsub()` se utilizan para reemplazar texto mediante expresiones regulares, pero:
+    - **sub():** Reemplaza solo la primera aparición del patrón dentro de cada cadena.
+    - **gsub():** Reemplaza todas las apariciones del patrón dentro de cada cadena.
+
+
+2. **Documentacion de codigos: ** Donde seleccionas para crear un nuevo archivo, existe un apartado llamado `R Markdown` el cual te permite crear archivos como el que estas leyendo.
+
+3. **Proyectos:** Si vas a trabajar con múltiples archivos de datos, scripts, gráficos, etc. Un `proyecto` te permite mantener todo bien organizado.
