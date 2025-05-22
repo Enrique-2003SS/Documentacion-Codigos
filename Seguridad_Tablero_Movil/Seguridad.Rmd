@@ -1,0 +1,336 @@
+---
+title: "Seguridad Tablero Movil Filtracion Base"
+author: "Eduardo Alanis"
+date: "2025-03-22"
+output: html_document
+---
+
+### Notas de Jair
+
+- Se utiliza **Leaflet.JS** y datos abiertos de incidencia delictiva a nivel nacional, con énfasis en los datos del estado de Hidalgo a nivel municipal y mensual para los **40 delitos** reportados.
+- Los datos abiertos se descargarán de: [Datos abiertos de incidencia delictiva](https://www.gob.mx/sesnsp/acciones-y-programas/datos-abiertos-de-incidencia-delictiva).
+- Es **importante** el tipo de delito, ya que el código de Jair funciona únicamente para **40 delitos**.
+
+### Mis notas:
+
+Se bajara la base de datos del siguiente sitio: [Datos abiertos de incidencia delictiva](https://www.gob.mx/sesnsp/acciones-y-programas/datos-abiertos-de-incidencia-delictiva)
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Documentacion Codigos/Seguridad_Tablero_Movil/Pagina_descarga.PNG" alt="M_todo" width="950"/>
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Documentacion Codigos/Seguridad_Tablero_Movil/Pagina_link.PNG" alt="M_todo" width="950"/>
+
+
+### Codigo
+
+Abrimos la base de datos descargada y confirmamos que realmente son los **40 delitos**.
+
+```{r verificacion_base, include= T, message=FALSE, warning=FALSE}
+
+# setwd("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/") # Definicion de directorio pero falla al usarlo en Rmd.
+
+d = read.csv("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Estructura_Datos/Municipal-Delitos-2015-2025_feb2025.csv", check.names = F, fileEncoding = "latin1")
+d$`Tipo de delito`   |> unique()
+```
+Abrimos la base de datos con información **nacional por entidad federativa** de 2015 y 2020. Con estos datos, calcularemos la población total de cada estado para los períodos 2015-2019 y 2020-2025. Esta población se optiene de cada *Censo*.
+
+Explicación de estas lineas de codigo:
+
+1. **Abrir la base de datos.**
+
+2. **Seleccionar columnas:**  
+   Se toman las columnas:
+   - *Entidad federativa*
+   - *Grupos quinquenales de edad*
+   - *Población total*
+   - *Estimador*
+
+3. **Filtrar la columna "Entidad federativa":**  
+   Se eliminan las filas que contienen valores NA y aquellas que tienen el valor *"Estados Unidos Mexicanos"*, ya que estas filas representan información general del país, no de los estados.
+
+4. **Filtrar la columna "Estimador":**  
+   Se conservan únicamente las filas cuyo contenido es *"Valor"*, descartando aquellas que muestran *"Error estándar"*, *"Límite inferior de confianza"*, etc.
+
+5. **Filtrar la columna "Grupos quinquenales de edad":**  
+   Se dejan solo las filas que indican *"Total"*, para obtener la información total por estado.
+
+6. **Modificar la columna "Entidad federativa":**  
+   Se ajusta esta columna eliminando los dos primeros dígitos de clave municipal y el espacio que aparecen al inicio, dejando únicamente el nombre del estado.
+
+7. **Eliminar columnas innecesarias:**  
+   Finalmente, se quitan las columnas *"Estimador"* y *"Grupos quinquenales de edad"*.
+
+```{r nacional, include= T, message=FALSE, warning=FALSE}
+##### nacional 2015
+intercensal_nac_2015 = readxl::read_excel("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Estructura_Datos/intercensal_2015.xls")
+intercensal_nac_2015_2 = intercensal_nac_2015 |>
+  dplyr::select(`Entidad federativa`,`Grupos quinquenales de edad`,`Población total`,Estimador)|>
+  dplyr::filter(!is.na(`Entidad federativa`) & `Entidad federativa` != 'Estados Unidos Mexicanos')|>
+  dplyr::filter(Estimador=='Valor')|>
+  dplyr::filter(`Grupos quinquenales de edad`=='Total')|>
+  dplyr::mutate(`Entidad federativa`=substr(`Entidad federativa`, start = 4, stop = nchar(`Entidad federativa`)))|>
+  dplyr::select(-Estimador,-`Grupos quinquenales de edad`)
+
+##nacional 2020
+nacional2020= readxl::read_excel("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Estructura_Datos/nacional_2015_2020.xlsx")
+nacional2020= nacional2020|>
+  dplyr::select(`Entidad federativa`,`Grupo quinquenal de edad`,`2020...9`)|>
+  dplyr::filter(`Entidad federativa` != 'Estados Unidos Mexicanos')|>
+  dplyr::filter(`Grupo quinquenal de edad` == 'Total')|>
+  dplyr::select(-`Grupo quinquenal de edad`)
+```
+
+
+Abrimos la base de datos con información **estatal del estado de Hidalgo por municipio** de 2015 y 2020. Con estos datos, calcularemos la población total de cada estado para los períodos 2015-2019 y 2020-2025. Esta población se optiene de cada *Censo*.
+
+Se realiza algo muy similar con lo que se hizo con las bases de datos de **Nacional** asi que no explicare estas lineas de codigos.
+
+
+```{r estatal, include= T, message=FALSE, warning=FALSE}
+## municipal 2015
+intercensal_mun_2015= readxl::read_excel("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Estructura_Datos/intercensal_hidalgo_2015.xls")
+intercensal_mun_2015_2= intercensal_mun_2015|>
+  dplyr::select(Municipio,`Grupos quinquenales de edad`,Estimador,`Población total`)|>
+  dplyr::filter(!is.na(`Municipio`) & Municipio!='Total')|>
+  dplyr::filter(Estimador=='Valor')|>
+  dplyr::filter(`Grupos quinquenales de edad`=='Total')|>
+  dplyr::mutate(Municipio=substr(Municipio, start = 5, stop = nchar(Municipio)))|>
+  dplyr::select(-Estimador)|>
+  dplyr::select(-`Grupos quinquenales de edad`)
+
+## municipal 2020
+intercensal_mun_2020=readxl::read_excel("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Estructura_Datos/Banco de datos infografias _Eduardo.xlsx")
+intercensal_mun_2020=intercensal_mun_2020|>
+  dplyr::select(Municipio,`Población total`)|>
+  dplyr::filter(!is.na(Municipio)& Municipio!='Estatal')
+```
+
+
+Explicacion del codigo:
+
+1. **Abrir la base de datos**  
+   Se carga el archivo utilizando los parámetros:
+   - **`check.names = F`**: Para que los nombres de las columnas se mantengan tal cual sin modificaciones.
+   - **`fileEncoding = latin1`**: Para asegurar que la codificación de caracteres se interprete correctamente.
+
+2. **Crear la columna "total"**  
+   Se añade una nueva columna llamada `total` que contiene la suma de los valores de los meses de **enero** a **diciembre**.
+
+3. **Seleccionar las columnas necesarias**  
+   Se conservan únicamente las columnas:
+   - `Año`
+   - `Entidad`
+   - `Tipo de delito`
+   - Los meses de **enero** a **diciembre**
+   - La columna `total`
+
+4. **Agrupar y ordenar la información**  
+   Se agrupa la data por:
+   - **Año**: Los datos se ordenan empezando desde 2015.
+   - **Entidad**: Las entidades se ordenan alfabéticamente (por ejemplo, Aguascalientes primero).
+   - **Tipo de delito**: También se ordenan alfabéticamente.
+   
+   **Resultado esperado:**  
+   Dado que hay 11 años, 32 entidades y 40 tipos de delitos, se obtiene un data frame con 11 × 32 × 40 = 14,080 filas.
+
+5. **Sumar los valores por grupo**  
+   Con `summarise_all` se suman los datos de los meses y el total para cada grupo definido anteriormente (por año, entidad y tipo de delito).
+
+6. **Añadir la población total ("pobtot")**  
+   Se agrega una nueva columna `pobtot` que contendrá la población total para cada periodo:
+   - **Creación:** Se inicia la columna con valores vacíos (`NA`).
+   - **Llenado de datos:**  
+     - **Para los años 2015-2019:**  
+       Se extrae la población del data frame `intercensal_nac_2015_2` y se repite:
+       - 40 veces, correspondiente a los 40 tipos de delito.
+       - 5 veces, por los 5 años de este periodo.
+     - **Para los años 2020-2025:**  
+       Se realiza un proceso similar, pero repitiendo:
+       - 40 veces por los tipos de delito.
+       - 6 veces, ya que son 6 años en este periodo.
+
+7. **Calcular la tasa**  
+   Se añade una columna `tasa` que calcula la tasa de incidencia por cada 100,000 habitantes, utilizando la información de población y los totales de delitos.
+
+
+
+```{r pegar_poblacion_estatal, include= T, message=FALSE, warning=FALSE}
+datos_estatal_2025=read.csv("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Estructura_Datos/Municipal-Delitos-2015-2025_feb2025.csv",check.names = F,fileEncoding = "latin1")
+datos_estatal_2025$total = rowSums(datos_estatal_2025 |> dplyr::select(Enero:Diciembre),na.rm = T)
+datos_estatal_2025 = datos_estatal_2025 |>
+  dplyr::select(Año,Entidad,`Tipo de delito`,Enero:total) |>
+  dplyr::group_by(Año,Entidad,`Tipo de delito`) |>
+  dplyr::summarise_all(sum)
+
+# Pegado por bloques la poblacion
+datos_estatal_2025$pobtot=rep(NA,nrow(datos_estatal_2025))    # Vacio
+datos_estatal_2025$pobtot[datos_estatal_2025$Año %in% c(2015:2019)] = intercensal_nac_2015_2$`Población total` |> lapply(FUN = \(x) rep(x,40)) |> unlist() |> rep(5)
+datos_estatal_2025$pobtot[datos_estatal_2025$Año %in% c(2020:2025)] = nacional2020$`2020...9` |> lapply(FUN = \(x) rep(x,40))|>unlist() |> rep(6)
+
+# Definimos la tasa por cada 1000 habitantes
+datos_estatal_2025 = datos_estatal_2025 |>
+  dplyr::mutate(tasa=1000*total/as.numeric(pobtot))
+```
+
+Se hace algo analogo con la siguiente parte del codigo, asi que no sera explicada.
+
+```{r pegar_poblacion_municipal, include= T, message=FALSE, warning=FALSE}
+datos_municipal_2025=read.csv("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Estructura_Datos/Municipal-Delitos-2015-2025_feb2025.csv",check.names = T,fileEncoding = "latin1")
+hidalgo_municipal_2025=datos_municipal_2025|>
+  dplyr::filter(Clave_Ent==13)
+
+
+hidalgo_municipal_2025$total=rowSums(hidalgo_municipal_2025|>dplyr::select(Enero:Diciembre),na.rm = T)
+
+hidalgo_municipal_2025=hidalgo_municipal_2025|>
+  dplyr::select(Año,Municipio,Tipo.de.delito,Enero:Diciembre,total)
+
+##Le pegamos del 2015 a 2019 la poblacion
+hidalgo_municipal_2025$pobtot=rep(0,nrow(hidalgo_municipal_2025))
+hidalgo_municipal_2025=hidalgo_municipal_2025|>
+  dplyr::arrange(Año,Municipio,Tipo.de.delito)
+hidalgo_municipal_2025_2=hidalgo_municipal_2025|>
+  dplyr::group_by(Año,Municipio,Tipo.de.delito)|>
+  dplyr::summarise_all(sum)
+
+##Rellenamos 2015
+hidalgo_municipal_2025_2$pobtot[hidalgo_municipal_2025_2$Año%in%c(2015:2019)]=
+  intercensal_mun_2015_2$`Población total`|>lapply(FUN = \(x) rep(x,40))|>unlist()|>rep(5)
+
+##Rellenamos 2020
+hidalgo_municipal_2025_2$pobtot[hidalgo_municipal_2025_2$Año%in%c(2020:2025)]=
+  intercensal_mun_2020$`Población total`|>lapply(FUN = \(x) rep(x,40))|>unlist()|>rep(6)
+
+#Definimos la tasa 
+hidalgo_municipal_2025_2=hidalgo_municipal_2025_2|>
+  dplyr::mutate(pobtot=as.numeric(pobtot))|>
+  dplyr::mutate(tasa=1000*total/pobtot)
+```
+
+Finalmente la generacion de los CSV que seran consumibles por JavaScript
+
+```{r generacion_csv, include= T, message=FALSE, warning=FALSE}
+datos_estatal_2025|>
+  dplyr::ungroup()|>  
+  dplyr::filter(Entidad=='Hidalgo')|>
+  dplyr::select(Año,`Tipo de delito`,total,pobtot,tasa)|>
+  write.csv("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil//Datos/CSVs_2/Hidalgo_Año_y_Tipo.csv",row.names = F,fileEncoding = "UTF-8")
+
+
+datos_estatal_2025|>
+  dplyr::ungroup()|>
+  dplyr::filter(Entidad=='Hidalgo')|>
+  dplyr::select(-Entidad)|>
+  tidyr::pivot_longer(cols = c(Enero:Diciembre),names_to = "Mes",values_to = "Conteo")|>
+  dplyr::select(Año, `Tipo de delito`,Mes,Conteo)|>
+  dplyr::mutate(Conteo=ifelse(is.na(Conteo),0,Conteo))|>
+  write.csv("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Datos/CSVs_2/delitos por mes_15-24_estatal.csv",row.names = F,fileEncoding = "UTF-8")
+
+# Puede variar con los historicos porque los reclasifican
+datos_estatal_2025|>
+  dplyr::ungroup()|>
+  dplyr::select(Año,`Tipo de delito`,tasa)|>
+  dplyr::group_by(Año,`Tipo de delito`)|>
+  dplyr::summarise(tasa_media=mean(tasa),tasa_mediana=median(tasa))|>
+  write.csv("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Datos/CSVs_2/tasa_media_nacional.csv",fileEncoding = "UTF-8",row.names = F)
+
+
+hidalgo_municipal_2025_2|>
+  tidyr::pivot_longer(cols = Enero:Diciembre,names_to = "Mes",values_to = "Conteo")|>
+  dplyr::select(Año,Municipio,Tipo.de.delito,Mes,Conteo)|>
+  dplyr::mutate(Conteo=ifelse(is.na(Conteo),0,Conteo))|>
+  write.csv("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Datos/CSVs_2/delitos por mes_15-24.csv",fileEncoding = "UTF-8",row.names = F)
+
+
+hidalgo_municipal_2025_2|>
+  dplyr::select(Año,Municipio,Tipo.de.delito,total,tasa)|>
+  write.csv("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Seguridad_Tablero_Movil/Datos/CSVs_2/Municipal_Año_y_Tipo.csv",fileEncoding = "UTF-8",row.names = F)
+```
+
+
+Vamos ha explicar cada uno de los Csv como se generan. 
+
+### Base datos_estatal_2025
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Documentacion Codigos/Seguridad_Tablero_Movil/datos_estatal_2025.PNG" alt="M_todo" width="950"/>
+
+
+### Hidalgo_Año_y_Tipo
+
+- Inicialmente, la base de datos `datos_estatal_2025` se había agrupado usando `group_by` para realizar ciertos análisis por grupos. Sin embargo, esta agrupación afecta el comportamiento de operaciones posteriores como `filter()`, `select()` o cálculos agregados, ya que se realizan dentro de cada grupo y no sobre el conjunto completo.  
+   Por ello, se utiliza `ungroup` para eliminar la agrupación y permitir operar sobre toda la base de datos.
+   
+- Una vez desagrupada la base de datos, se filtra la columna `Entidad` para conservar únicamente aquellas filas correspondientes a Hidalgo.
+
+-  Finalmente, se seleccionan solo las columnas que son de interés:  
+   - `Año`
+   - `Tipo de delito`
+   - `total`
+   - `poptot`
+   - `tasa`
+
+- Se guarda.
+
+### delitos por mes_15-24_estatal.csv
+
+- Inicialmente, la base de datos `datos_estatal_2025` se había agrupado usando `group_by` para realizar ciertos análisis por grupos. Sin embargo, esta agrupación afecta el comportamiento de operaciones posteriores como `filter()`, `select()` o cálculos agregados, ya que se realizan dentro de cada grupo y no sobre el conjunto completo.  
+   Por ello, se utiliza `ungroup` para eliminar la agrupación y permitir operar sobre toda la base de datos.
+   
+- Una vez desagrupada la base de datos, se filtra la columna `Entidad` para conservar únicamente aquellas filas correspondientes a Hidalgo.
+
+-  Se realiza un `tidyr::pivot_longer(cols = c(Enero:Diciembre),names_to = "Mes",values_to = "Conteo")` la definicion de `pivot_longer` nos dice que: "alarga" los datos, aumentando el número de filas y reduciendo el número de columnas. En este caso convierte las columnas de los meses (de Enero a Diciembre) en filas. El nombre del mes se almacena en la columna `Mes`, y los valores originales de esas columnas se guardan en la columna `Conteo`. En términos sencillos y no formales, es como hacer una transposición de matriz pero solo de una parte.
+
+- Despues, se seleccionan solo las columnas que son de interés:  
+   - `Año`
+   - `Tipo de delito`
+   - `Mes`
+   - `Conteo`
+   
+- Finalmente vamos a definir una condicional para la columna de `Conteo` donde si tenemos que un valor de `Conteo` es NA, este lo llenara con 0 y en caso que exista un numero este lo dejara igual. 
+
+- Se guarda.
+
+
+### tasa_media_nacional
+
+- Inicialmente, la base de datos `datos_estatal_2025` se había agrupado usando `group_by` para realizar ciertos análisis por grupos. Sin embargo, esta agrupación afecta el comportamiento de operaciones posteriores como `filter()`, `select()` o cálculos agregados, ya que se realizan dentro de cada grupo y no sobre el conjunto completo.  
+   Por ello, se utiliza `ungroup` para eliminar la agrupación y permitir operar sobre toda la base de datos.
+
+- Despues, se seleccionan solo las columnas que son de interés:  
+   - `Año`
+   - `Tipo de delito`
+   - `tasa`
+   
+- Se vuelve agrupar por `Año` y `Tipo de delito`con un `group_by`.
+
+- Ademas se crean dos variables mas llamada `tasa_media` y `tasa_mediana` apartir de un `summarise`
+
+- Se guarda.
+
+- *Nota: * Puede variar con los historicos porque los reclasifican
+
+
+### Base hidalgo_municipal_2025_2
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Documentacion Codigos/Seguridad_Tablero_Movil/hidalgo_municipal_2025_2.PNG" alt="M_todo" width="950"/>
+
+### delitos por mes_15-24.csv
+
+### Municipal_Año_y_Tipo.csv
+
+*Se hacen analogos que los anteriores*.
+
+
+### Notas para mi:
+
+- Comprimir la carpeta pero quitando el archivo que se subio dado que este no se hace uso en JavaScrip ademas es una manera de ser respetuoso con el servidor y mandarlo a Brayan.
+
+- Checar la cantidad de delitos que sean **40** dado que lo pueden actualizar.
+
+- Dentro de **VisualCode** solo moverle al archivo HTML llamado **tablero_seguridad** en el apartado de `"hasta tal mes"`
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Documentacion Codigos/Seguridad_Tablero_Movil/html.PNG" alt="M_todo" width="950"/>
+
+
+
+
+
