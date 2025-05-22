@@ -1,0 +1,151 @@
+---
+title: "Recortar páginas de un archivo PDF"
+author: "Eduardo Alanis"
+date: "2024-10-02"
+output: html_document
+---
+
+# Recorta un PDF para que contenga solo las páginas seleccionadas.
+
+```{r directorio, message=FALSE, warning=FALSE}
+library(pdftools)   # Cargas la libreria para leer pdf's.
+
+# Defines tu directorio de trabajo
+setwd("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Septiembre/Archivos Utilizados/25 sep/Region Actopan/")
+```
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Cortar-Paginas-Imagenes/directorio.png" alt="Defines tu directorio" width="950"/>
+
+
+
+```{r definion, message=FALSE, warning=FALSE}
+# Define tu archivo de entrada con la ruta completa
+input_file = "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Septiembre/Archivos Utilizados/25 sep/Region Actopan/REGIÓN ACTOPAN.pdf"
+
+# Define como se llamara tu archivo de salida
+output_file = "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Septiembre/Archivos Utilizados/25 sep/Region Actopan/REGIÓN ACTOPAN_RegionTula.pdf"
+
+```
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Cortar-Paginas-Imagenes/pdf.png" alt="Defines tu directorio" width="950"/>
+
+
+Este PDF de ejemplo tiene 48 páginas, pero solo queremos las páginas 1 a 4. Para eso, usamos lo siguiente:
+
+```{r paginas, message=FALSE, warning=FALSE}
+# Das el numero de las paginas que quires mantener(El numero va respecto a la pagina del pdf no del libro o documento)
+paginas = c(1:4)
+```
+
+Y guardas el documento
+```{r guardar, message=FALSE, warning=FALSE}
+# Crea un nuevo archivo PDF que contiene solo un subconjunto de las páginas de un archivo PDF original.
+pdf_subset(input_file, pages = paginas, output = output_file)
+```
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Cortar-Paginas-Imagenes/guardado.png" alt="Guardado" width="950"/>
+
+
+
+# Recorta un PDF en varias partes.
+
+```{r directorio2, message=FALSE, warning=FALSE}
+library(pdftools)   # Cargas la librera para leer pdf's.
+
+# Defines tu directorio de trabajo
+setwd("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Septiembre/Archivos Utilizados/25 sep/Region Actopan/")
+
+# Das tu archivo de entrada(el que vas a recortar)
+input_file <- "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Septiembre/Archivos Utilizados/25 sep/Region Actopan/REGIÓN ACTOPAN.pdf"
+
+```
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Cortar-Paginas-Imagenes/directorio.png" alt="Defines tu directorio" width="950"/>
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Cortar-Paginas-Imagenes/pdf2.png" alt="Observas tu pdf" width="950"/>
+
+
+Este PDF de ejemplo tiene $48$ páginas. Queremos dividirlo en varios PDF más pequeños en este caso de $4$ paginas. El primer PDF contendrá las páginas $1$ a $4$, el segundo las páginas $5$ a $8$, y así sucesivamente, hasta que el último PDF tenga las páginas $45$ a $48$. Para hacer esto, usamos lo siguiente:
+
+La forma en que se construye el bucle `for` se pensó de la siguiente manera: se usa un rango de $1$ a $12$ porque $48 ÷ 4 = 12$. Queremos obtener las páginas en grupos de 4, siguiendo este patrón:
+
+- Cuando $n = 1$, obtenemos las páginas del $1$ al $4$, lo cual es equivalente a $4 \times 1 - 3 = 1$ y $4 \times 1 = 4$.
+- Cuando $n = 2$, obtenemos las páginas del $5$ al $8$, lo cual es equivalente a $4 \times 2 - 3 = 5$ y $4 \times 2 = 8$.
+- Cuando $n = 3$, obtenemos las páginas del $9$ al $12$, lo cual es equivalente a $4 \times 3 - 3 = 9$ y $4 \times 3 = 12$.
+- ...
+- Cuando $n = 12$, obtenemos las páginas del $45$ al $48$, lo cual es equivalente a $4 \times 12 - 3 = 45$ y $4 \times 12 = 48$.
+
+En resumen, el patrón es el siguiente:
+
+- El número de página inicial se calcula con $4 \times n - 3$.
+- El número de página final se calcula con $4 \times n$.
+
+Por eso, se usara la siguiente linea de código en el bucle `for`:
+
+```r
+paginas = c(((4*n) - 3):(4*n))
+```
+Continuacion del codigo
+
+```{r guardado2, message=FALSE, warning=FALSE}
+for (n in 1:12) {
+  output_file = paste0("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Septiembre/Archivos Utilizados/25 sep/Region Actopan/Region_", n, ".pdf") # Defines como se llamara tu archivo de salida
+  
+  # Páginas que quieres extraer
+  paginas = c( ((4*n) - 3):(4*n) ) #Aqui estoy tomando 1,2,3,4 y despues 5,6,7,8 asi de manera sucesiva 
+  
+  pdf_subset(input_file, pages = paginas, output = output_file) # Guarda los archivos
+}
+```
+
+
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Cortar-Paginas-Imagenes/guardado2.png" alt="Observas tu pdf" width="950"/>
+
+
+
+# Recorta un PDF en partes iguales.
+
+Se hará uso de una función.
+
+**Descripción:** Recortas un archivo PDF en partes iguales (uniformemente).
+
+**Uso:**
+dividir_pdf(paginas_dividir = n, entrada = "Directorio_del_pdf")
+
+**Argumentos:**
+
+  - **paginas_dividir** Indica en cuántas partes quieres dividir tu documento PDF.
+  
+  - **entrada** Indica la dirección de tu archivo PDF.
+  
+  
+### Manera de usarlo en R
+
+Debes compilar la siguiente función (sin cambiar nada).
+```{r funcion, message=FALSE, warning=FALSE}
+dividir_pdf = function(paginas_dividir, entrada){
+  library(pdftools)
+  informacion = pdf_info(entrada)
+  numero_paginas = informacion$pages
+  directorio = dirname(entrada)
+  if ((numero_paginas %% paginas_dividir) == 0) {
+    print("Si se pudo realizar, observa tu carpeta en donde esta tu pdf")
+    for (n in 1:(numero_paginas/paginas_dividir)) {
+      output_file = paste0(dirname(entrada), "/",n, ".pdf") 
+      paginas = c( ((paginas_dividir*n) - (paginas_dividir - 1)):(paginas_dividir*n) ) 
+      pdf_subset(entrada, pages = paginas, output = output_file) 
+    }
+  } else{
+    print("No se puede hacer porque la división no es entera, elija otro número para dividir el PDF.")
+  }
+}
+```
+
+Para usar esto, escribe **dividir_pdf** y coloca la información que necesitas en cada parte. Por ejemplo:
+
+```{r uso_funcion, message=FALSE, warning=FALSE}
+dividir_pdf(paginas_dividir = 5, entrada = "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Septiembre/Archivos Utilizados/25 sep/Region Actopan/REGIÓN ACTOPAN.pdf")
+```
+
+
+
