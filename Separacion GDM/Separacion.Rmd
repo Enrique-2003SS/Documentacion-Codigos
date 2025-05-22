@@ -1,0 +1,153 @@
+---
+title: "M"
+author: "Eduardo Alanis"
+date: "2025-02-06"
+output: html_document
+---
+
+## Explicación en que consiste el codigo
+
+Tenemos una base de la siguiente manera:
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Rmd/Separacion M/base.PNG" alt="M_todo" width="950"/>
+
+Esta base de datos no incluye la geometría de los municipios y tampoco está ordenada correctamente por clave municipal. El objetivo principal es generar varios archivos shp a partir de esta base de datos. Cada archivo shp debe contener, por ejemplo, la cve_mun, el nombre del municipio y un conjunto específico de columnas, junto con la geometría correspondiente.
+
+Por ejemplo:
+
+- Un archivo shp contendrá cve_mun, nombre, y las columnas M1_1_1, M1_1_2, ..., M1_1_7, además de la geometría.
+
+- Otro archivo shp contendrá cve_mun, nombre, y las columnas M1_2_1, M1_2_2, ..., M1_2_4, junto con la geometría.
+
+Este proceso se repetirá para todas las combinaciones de Mi_j_k en la base de datos. Por ejemplo deberia quedar asi:
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Rmd/Separacion M/shp_prueba.PNG" alt="M_todo" width="950"/>
+
+
+## Cómo crear una base correcta con la geometría
+
+Carga las librerías necesarias.
+```{r librerias, include= T, message=FALSE, warning=FALSE}
+library(sf)
+library(readxl)
+library(stringr)
+```
+
+
+Abre el archivo SHP con la geometría y la base de datos. Luego, ordena los datos por `CVE_MUN` (clave municipal) para que los estados sigan un orden numerico. Después, selecciona solo las tres últimas columnas, ya que son las relevantes. Finalmente, renombra la segunda columna de sh para que coincida con una columna de la base de datos con la que se trabajará.
+
+```{r abrir, include=T,  message=FALSE, warning=FALSE, echo=TRUE, results='hide'}
+sh = st_read("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Archivos Utilizados/5 febrero/Separacion/conjunto_de_datos/13mun.shp", options = "ENCODING=LATIN1")
+colnames(sh)
+sh = sh[order(as.numeric(sh$CVE_MUN), decreasing = F), ]   # Ordenas por numero de municipio
+sh = sh[, c(3:5)]   # Solo quieres las ultimas 3 columnas de este shp 
+colnames(sh)[2] = "Municipio"
+# Abres base
+base = read_excel("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Archivos Utilizados/5 febrero/Separacion/base/base_2023.xlsx")[, -1]
+```
+
+Guarda la variable de municipio del archivo `SHP` original tal como está escrita correctamente.
+```{r g_municipio, include=T,  message=FALSE, warning=FALSE}
+Municipio = sh$Municipio
+```
+
+
+Se define la función `limpiar_texto`, que convierte a minúsculas los nombres de los municipios, elimina los acentos y los espacios dobles.
+```{r funcion, include=T,  message=FALSE, warning=FALSE}
+limpiar_texto = function(texto) {
+  library(stringr)
+  texto = str_to_lower(texto) # Minusculas
+  texto = iconv(texto, from = "UTF-8", to = "ASCII//TRANSLIT") # Quita Aceptos
+  texto = str_squish(texto) # Quita espacios dobles
+  return(texto)
+}
+```
+
+Aplica la función `limpiar_texto` a las columnas de municipio tanto del archivo SHP como de la base de datos. Esto asegura que los nombres de los municipios sean consistentes en ambas bases, lo que permitirá juntarlas correctamente después.
+```{r aplicacion, include=T,  message=FALSE, warning=FALSE}
+sh$Municipio = limpiar_texto(sh$Municipio)
+base$Municipio = limpiar_texto(base$Municipio)
+```
+
+Realiza un merge entre las bases utilizando la columna de municipio para combinar toda la información en un solo data frame llamado `todo`. Esto permite que la geometría de cada municipio se añada correctamente a la base principal. Luego, ordenamos el data frame `todo` para organizar los datos respectivamente el `cve_mun`.
+```{r data.frame, include=T,  message=FALSE, warning=FALSE}
+todo = merge(x = base, y = sh, by = "Municipio")
+todo = todo[order(as.numeric(todo$CVE_MUN), decreasing = F), c(2, 118, 1, 3:117, 119)]
+cat("Verificar que es correcto el orden de los municipios",  all(limpiar_texto(todo$Municipio) ==limpiar_texto(sh$Municipio)))
+todo$Municipio = Municipio
+```
+
+
+Guardamos esta nueva base correcta.
+```{r guardar, include=T,  message=FALSE, warning=FALSE}
+st_write(todo, "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Archivos Utilizados/5 febrero/Separacion/base/Correcta/base_2023.shp", delete_layer = TRUE)
+```
+
+## Cómo separar el archivo shp
+Primero, se carga la base de datos guardada previamente. Luego, el código extrae los nombres de las columnas y toma solo los números que están en la segunda y cuarta posición de cada nombre, guardándolos en la variable `a`.
+
+Por ejemplo:
+
+- Si la columna se llama `M1_1_1`, se extrae `1_1`.  
+- Si la columna se llama `M8_3_2`, se extrae `8_3`.  
+
+Así, `a` tendrá valores como:
+
+$$
+a = (1\_1, 1\_1, 1\_1, 1\_2, 1\_2, 1\_3, 1\_3, \dots, 8\_2, 8\_2, 8\_3, 8\_3, 8\_3)
+$$
+
+Luego, con la función `unique()`, se obtienen los valores únicos de `a`, los cuales serán los puntos donde se harán los cortes. Y esto se almacenara `interes` de la siguiente forma:
+
+$$
+\text{interes} = (1\_1, 1\_2, 1\_3, 1\_4, 2\_1, 2\_2, 2\_3, \dots, 8\_1, 8\_2, 8\_3)
+$$
+
+Después, se crea una variable `carpeta` con la ruta donde se generarán nuevas carpetas usando los nombres de los elementos en `interes`.
+
+Finalmente, se busca qué valores de `a` están en `interes`, es decir, se vera el indice de los valores de `a` que esten contenidos en `interes`. La función `which()` devuelve los índices de las columnas que corresponden a cada corte y esta se guardara en la variable `indices_guardar`.
+
+Para concluir, se crea un `data.frame` llamado `filtrar`, el cual contiene el nombre del municipio junto con los datos correspondientes a cada `M1_1`, `M1_2`, ..., etc. La última columna del `data.frame` almacena la geometría.
+
+Finalmente, `filtrar` se guarda como un archivo `shp` con su nombre correspondiente en la ruta de destino definida en la variable `carpeta`.
+
+```{r final, include=T,  message=FALSE, warning=FALSE, echo=TRUE, results='hide'}
+# Vuelves abrir la base
+base = read_sf("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Archivos Utilizados/5 febrero/Separacion/base/Correcta/base_2023.shp")
+
+# Tomas los digitos del 2 al 4 del string de cada nombre de columna
+a = unlist(lapply(colnames(base), function(x) substr(x, start = 2, stop = 4)))
+interes = unique(a[-c(1:3, 119)]) # Saltos de interes
+
+for (i in seq_along(interes)) {
+  # Nombre de la carpeta
+  carpeta = paste0("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Cosas Realizadas/5 de febrero/M_", interes[i])
+  
+  # Crear la carpeta si no existe
+  if (!dir.exists(carpeta)) {
+    dir.create(carpeta, recursive = TRUE)
+  }
+  
+  # Filtrar los datos
+  indices_guardar = which(a %in% interes[i])      # Indices que nos interesa
+  filtrar = base[, c(1:3, indices_guardar, 119)]  # Filtra la base como queremos
+  
+  # Guardar el archivo en la carpeta correspondiente
+  st_write(filtrar, paste0(carpeta, "/", "M_", interes[i], ".shp"), delete_layer = TRUE)
+}
+```
+
+El codigo anterior realizo lo siguiente:
+
+### Almacenamiento de los diferentes $M_$
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Rmd/Separacion M/M_todo.PNG" alt="M_todo" width="950"/>
+
+### Apariencia de cada carpeta de $M_$
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Rmd/Separacion M/M_particular.PNG" alt="M_todo" width="950"/>
+
+
+### Visualización de cada SHP de $M_$
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Febrero/Rmd/Separacion M/shp_prueba.PNG" alt="M_todo" width="950"/>
