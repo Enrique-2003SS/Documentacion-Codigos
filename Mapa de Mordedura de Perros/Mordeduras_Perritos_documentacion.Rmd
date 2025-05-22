@@ -1,0 +1,242 @@
+---
+title: "Incidentes con Fauna Feral"
+author: "Eduardo Alanis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+El siguiente codigo explica de manera detallada como se realiza el mapa web de Incidentes con Fauna Feral.
+
+```{r librerias, message=FALSE, warning=FALSE}
+library(sf)
+library(readxl)
+library(dplyr)
+library(leaflet)
+library(reshape2)
+library(htmlwidgets)
+library(leaflet.extras)
+library(leaflet.extras2)
+```
+
+En este caso unicamente vamos a trabajar con una base de datos, la cual la definimos de la siguiente forma:
+
+```{r base_datos}
+clues= readxl::read_excel("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Mordeduras_perritos/Datos/CLUES_gastrointestinales/morbi general  X unidad sectorial 2023 (1).xlsx")
+```
+
+Vamos a trabajar la base en dos partes:
+
+1. Filtrar por `“perro”`
+    - Busca en la columna **padecimiento** todos aquellos que incluyan la palabra “perro”.
+    
+2. Filtrar por `“total”`   
+    - En la columna **Unidad médica**, selecciona los registros que contengan la palabra “total”.
+    - Luego, eliminamos la palabra `“Total”` al inicio del texto para quedarnos solo con el nombre del sitio.
+    - Por último, eliminamos la columna padecimiento.
+
+
+```{r primera_filtracion}
+clues_c_perros = clues|> 
+  dplyr::filter(grepl("perro",Padecimiento)) 
+
+clues_total_pad=clues|>
+  dplyr::filter(grepl("Total",`Unidad médica`))|>
+  dplyr::mutate(`Unidad médica`=sub("^Total ", "", `Unidad médica`))|>
+  dplyr::select(-Padecimiento)
+```
+
+
+Se usa la función `grepl` para encontrar las filas de esa columna que contienen la palabra `"perro"` o `"total"`. Luego, en el caso de la segunda variable definida, se utiliza la función `sub` para reemplazar la palabra `"Total"` al inicio del texto por un espacio en blanco.
+
+
+Después, vamos a unir las dos bases que trabajamos por separado en una nueva variable llamada `clues_c_perros_y_total`.
+Lo que haremos es lo siguiente:
+
+- Usaremos todas las columnas de la base `clues_c_perros`.
+
+- A esta base le agregaremos la columna `Casos` de la base `clues_total_pad`, pero renombrada como `Casos_total`.
+
+- La unión se hará por la columna `CLUES`, y se mantendrá el número de filas de `clues_total_pad`.
+
+Luego, se añade una nueva columna llamada `porc_casos_perros` que representa el porcentaje de casos por sitio. Este se calcula dividiendo el número de casos (`Casos`) entre el total de casos (`Casos_total`) para cada fila, y luego multiplicando el resultado por 100.
+
+
+```{r clues_total}
+clues_c_perros_y_total = merge(x = clues_c_perros, y = clues_total_pad |> dplyr::select(CLUES,Casos)|> dplyr::mutate(Casos_total = Casos)|> dplyr::select(-Casos), by='CLUES', all.y = T)
+clues_c_perros_y_total$porc_casos_perros = clues_c_perros_y_total$Casos/clues_c_perros_y_total$Casos_total*100
+```
+
+Después, vamos a abrir un archivo `shp`, que contiene las geometrías (como los municipios) relacionadas con la información que hemos estado trabajando. Luego, unimos esa información geográfica a nuestra base `clues_c_perros_y_total` usando un merge. Finalmente, convertimos el resultado en un objeto `sf` para trabajar con datos espaciales.
+
+```{r shp}
+clues_shp = sf::read_sf("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Mordeduras_perritos/Datos/CLUES_gastrointestinales/clues_gastrointestinales_shapefile.shp")
+clues_c_perros_y_total = merge(x = clues_c_perros_y_total, y = clues_shp|> dplyr::select(CLUES, mun, geometry), by = 'CLUES')
+clues_c_perros_y_total = clues_c_perros_y_total |> st_as_sf()
+```
+
+Luego, vamos a trabajar con la misma base de datos pero ordenándola de diferentes maneras:
+
+- `clues_c_perros_y_total_p`: se ordena por la columna `porc_casos_perros`, de mayor a menor.
+
+- `clues_c_perros_y_total_n`: se ordena por la columna `Casos`, también de mayor a menor.
+
+```{r numero_porcenje}
+clues_c_perros_y_total_p = clues_c_perros_y_total[order(clues_c_perros_y_total$porc_casos_perros, decreasing = TRUE), ]
+clues_c_perros_y_total_n = clues_c_perros_y_total[order(clues_c_perros_y_total$Casos, decreasing = TRUE), ]
+```
+
+
+Apartir de estas 2 variables vamos a definir unas paletas de colores continuas de amarillo a rojo y los valores que esten en `NA` en gris.
+
+```{r paletas}
+pal_perros = colorNumeric(c("yellow","red"),domain = clues_c_perros_y_total_p$porc_casos_perros, na.color = "grey")
+pal_perros_n = colorNumeric(c("yellow","red"),domain = clues_c_perros_y_total_n$Casos, na.color = "grey")
+```
+
+Ahora vamos a definir las variables necesarias para crear el mapa de calor.
+
+Aunque solo se necesitan los puntos (coordenadas) y no es estrictamente necesario unirlos a la base de datos original, prefiero crear dos nuevas columnas nuevas que contengan estas coordenadas. Esto ayuda a mantener un mejor orden y claridad entre los datos y lo que se está graficando.
+
+```{r mapas_calor}
+# Porcentaje de casos
+clues_c_perros_y_total_p = clues_c_perros_y_total_p |> dplyr::filter(!is.na(porc_casos_perros))
+coordenadas_porcentaje = sf::st_coordinates(clues_c_perros_y_total_p )
+longitud_porcentaje = coordenadas_porcentaje[,1]
+latitud_porcentaje = coordenadas_porcentaje[,2]
+
+clues_c_perros_y_total_p$latitud = latitud_porcentaje
+clues_c_perros_y_total_p$longitud = longitud_porcentaje
+
+
+# Numero de casos de Mordedura
+clues_c_perros_y_total_n = clues_c_perros_y_total_n |> dplyr::filter(!is.na(Casos))
+coordenadas_numero = sf::st_coordinates(clues_c_perros_y_total_n)
+longitud_numero = coordenadas_numero[,1]
+latitud_numero = coordenadas_numero[,2]
+
+clues_c_perros_y_total_n$latitud = latitud_numero
+clues_c_perros_y_total_n$longitud = longitud_numero
+```
+
+Hacemos uso de `filter(!is.na(porc_casos_perros))` o de `filter(!is.na(Casos))` para unicamente quedarnos para aquellos puntos que tienen un valor y grafiquen en el mapa de calor.
+
+
+#### Generar mapa web
+```{r mapas_web}
+perros = leaflet()|>
+  addTiles()|>
+  addCircles(data = clues_c_perros_y_total_p |> as("Spatial"), color = pal_perros(clues_c_perros_y_total_p$porc_casos_perros), 
+             radius = clues_c_perros_y_total_p$porc_casos_perros*200, 
+             label = ~paste(Municipio, "-",clues_c_perros_y_total_p$`Unidad médica`),
+             opacity = 0.5, 
+             fillOpacity = 0.5,
+             popup = ~paste("Municipio:", clues_c_perros_y_total_p$mun,
+                            "<br> Nombre: ",clues_c_perros_y_total_p$`Unidad médica`,
+                            "<br> Mordeduras de perros: ",clues_c_perros_y_total_p$Casos,
+                            "<br> Total de casos en el establecimiento: ",clues_c_perros_y_total_p$Casos_total,
+                            "<br> % de casos de mordeduras: ",clues_c_perros_y_total_p$porc_casos_perros|>round(2),"%"
+             ),group = "Porcentaje de casos de mordeduras"
+             )|>
+  addCircles(data = clues_c_perros_y_total_n |> as("Spatial"), color = pal_perros_n(clues_c_perros_y_total_n$Casos), 
+             radius = clues_c_perros_y_total_n$Casos*10, 
+             opacity = 0.5,fillOpacity = 0.5,
+             popup = ~paste("Municipio:", clues_c_perros_y_total_n$mun,
+                            "<br> Nombre: ",clues_c_perros_y_total_n$`Unidad médica`,
+                            "<br> Mordeduras de perros: ",clues_c_perros_y_total_n$Casos,
+                            "<br> Total de casos en el establecimiento: ",clues_c_perros_y_total_n$Casos_total,
+                            "<br> % de casos de mordeduras: ",clues_c_perros_y_total_n$porc_casos_perros|>round(2),"%"
+              ),group = "Número de casos de mordeduras"
+             )|>
+  addHeatmap(data = clues_c_perros_y_total_p |> as("Spatial"), lng = clues_c_perros_y_total_p$longitud, lat = clues_c_perros_y_total_p$latitud, blur= 5, max = 1, radius = 40, group = "Porcentaje de casos de mordeduras", gradient = "Reds") |>
+  addHeatmap(data = clues_c_perros_y_total_n |> as("Spatial"), lng = clues_c_perros_y_total_n$longitud, lat = clues_c_perros_y_total_n$latitud, blur = 5, max = 1, radius = 40, group = "Número de casos de mordeduras", gradient = "Reds") |>
+  addSearchFeatures(targetGroups = "Porcentaje de casos de mordeduras",
+                    options = searchFeaturesOptions(
+                      zoom = 12, 
+                      openPopup = F,
+                      firstTipSubmit =F,
+                      hideMarkerOnCollapse =T))|>
+  addLayersControl(
+    baseGroups = c("Porcentaje de casos de mordeduras", "Número de casos de mordeduras"),
+    options = layersControlOptions(collapsed = FALSE,)
+  )|>
+  hideGroup(c("Número de casos de mordeduras"))|>
+  addControl(
+    html = "<h2 style='color: darkblue;text-align: center;'>Casos de Mordeduras por Perros a nivel de CLUES</h2>",
+    position = "bottomleft"
+  )
+```
+
+Para crear un mapa interactivo en R con **leaflet**, seguimos estos pasos:
+
+1. **Iniciar el mapa:**  
+   `leaflet() |> addTiles()`  
+   Esto genera un mapa vacío con la capa base que proporciona `addTiles()`.
+
+2. **Añadir geometrías:**  
+   Dependiendo de tus datos, puedes agregar:
+
+   - **Puntos** con `addCircleMarkers()` o `addMarkers()`
+   - **Líneas** con `addPolylines()`
+   - **Polígonos** con `addPolygons()`
+   - **Rasters** con `addRasterImage()`
+   - **Mapas de calor** con `heatmap()`
+   - **Etcétera.**
+
+   Por ejemplo, en nuestro código primero agregamos `addCircles()`, que muestra el **porcentaje de casos de mordeduras**, y luego otro `addCircles()` que representa el **número total de casos de mordeduras**. De manera análoga, también se incorporan los mapas de calor mediante `heatmap()`.
+
+   Aquí queremos hacer un paréntesis para explicar cómo está estructurado el uso de `addCircles()`. Los principales parámetros que contiene son los siguientes:
+
+   - **data:** indica con qué base de datos estamos trabajando.
+   - **radius:** especifica qué columna se usará para definir el radio de los círculos.
+   - **label:** define la información que aparecerá al pasar el cursor sobre los círculos.
+   - **opacity:** determina la opacidad del borde del círculo.
+   - **fillOpacity:** define la opacidad del relleno del círculo.
+   - **popup:** muestra la información que se desplegará al hacer clic sobre los círculos. En este apartado se suele utilizar una estructura en `HTML`.
+   - **group:** indica la capa a la que pertenece el elemento, lo cual es útil para el control de capas con `addLayersControl()`.
+
+   De manera analoga vamos a detallar mas como esta estructurada la funcion `heatmap`, sus parametros son:
+   - **data:** Es el conjunto de datos que contiene los puntos geoespaciales que se van a usar para generar el mapa de calor.
+   - **lng:** Define la columna que contiene las longitudes de los puntos.
+   - **lat:** Define la columna que contiene las latitudes de los puntos.
+   - **blur:** Controla el nivel de difuminado de cada punto.
+   - **max:** Define el valor máximo que puede alcanzar la intensidad del heatmap.
+   - **radius:** Especifica el radio en píxeles de influencia de cada punto.
+   - **group:** Etiqueta del grupo de capas. Permite controlar la visualización del heatmap mediante controles de capas (`addLayersControl`).
+   - **gradient:** Define el esquema de colores del heatmap.
+    
+    
+
+3. **Búsqueda dentro del mapa:** 
+  Para buscar objetos por su etiqueta, se hace uso de `addSearchFeatures()` donde sus paremetros son:
+    - **targetGroups:** grupo (data.frame) donde buscar.
+    - **zoom:** nivel al encontrar el objeto.
+    - **openPopup:** abre el popup, es decir, hace la accion cuando pulsas con el mouse el objeto.
+    - **hideMarkerOnCollapse:** Indica si quieres que el buscador se encuentre suprimido
+    - **position:** ubicación del widget de búsqueda.
+
+4. **Control de capas:**
+  Para activar o desactivar grupos de capas usaremos, se hace uso de `addLayersControl` donde los parametros son: 
+    - **baseGroups:** capas base los cuales las debemos anotar en un vector `c("Porcentaje de casos de mordeduras", "Número de casos de mordeduras")`.
+    - **overlayGroups:** capas superpuestas que pueden mostrarse juntas. En el caso que existan debes anotarlas como un vector.
+    - **position:** indica en que parametro te posicionas este panel.
+    - **options = layersControlOptions(collapsed = FALSE)** mantiene el panel de control abierto.
+    
+5. **Capas Iniciales:**
+  Para que algunas capas del mapa estén ocultas al iniciar el mapa se hace uso de `hideGroup` donde su paremetros es:
+    - **`group`**: Define las capas que empezarán ocultas.
+6. **Agregar un texto:**
+  Hacemos uso de `addControl` el los parametros de uso son:
+    - **html:** El argumento `HTML` con el texto que le vas a pasar.
+    - **position:*** La posicion en el que este se encuentra.
+    
+    
+    
+Para vizualizar nuestro mapa debemos mandarlo ha llamar, es decir:
+```{r visual}
+perros
+```
+Finalmente para guardar nuestro mapa hacemos uso de:
+```{r guardar}
+library(htmlwidgets)
+saveWidget(perros, "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Gob/Proyectos/Mordeduras_perritos/mapa_mordedura_perros.html",selfcontained = T, title = "Accidentes fauna feral")
+```
