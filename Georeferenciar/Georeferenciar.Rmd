@@ -1,0 +1,106 @@
+---
+title: "Georreferencias sin API"
+author: "Eduardo Alanis"
+date: "2024-10-07"
+output: html_document
+---
+
+Para usar este código, la base de datos que deseas georreferenciar debe incluir las siguientes variables: Calle, Colonia, Código Postal, Ciudad, Estado y País.
+
+```{r librerias, message=FALSE, warning=FALSE}
+# Cargar librerias, estas son posibles que se pueden usar
+library(haven)    # Carga la librería 'haven' para leer y escribir archivos SPSS, Stata y SAS.
+library(foreign)  # Carga la librería 'foreign', también utilizada para leer archivos en diferentes formatos estadísticos.
+library(sf)       # Carga la librería 'sf' para manejar y analizar datos espaciales (geometrías vectoriales).
+library(readxl)   # Carga la librería 'readxl' para leer archivos Excel.
+```
+
+
+
+```{r datos, message=FALSE, warning=FALSE}
+# Abres el archivo que se va utilizar, en este ejemplo se hara uso de un archivo Excel.
+datos = read_excel(path = "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Agosto/Archivos Utilizados/Directorio final 2023 sectur (1) (1).xlsx", sheet = 1, col_names = TRUE, skip = 1)
+
+# Escribes de manera correcta el nombre de las columnas que se van utilizar.
+columnas_utilizar = c("NOMBRE DEL ESTABLECIMIENTO", "MUNICIPIO", "LOCALIDAD", "CALLE", "COLONIA", "CP", "LATITUD","LONGITUD", "LATITUD_NUEVOS", "LONGITUD_NUEVOS")
+
+datos = datos[, columnas_utilizar]  # Filtras los datos, solo con las columnas que son de tu interes
+```
+
+En nuestro caso, los datos tienen las siguientes columnas: nombre del establecimiento, municipio, localidad, calle, colonia, código postal, latitud y longitud.
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Georeferenciar_imagenes/datos.png" alt="datos" width="950"/>
+
+Observamos que en la columna de latitud hay valores "n.d." y estos son de nuestro interés, ya que las filas que contienen esto se van a georeferenciar.
+
+```{r funciones_filtrado, message=FALSE, warning= FALSE}
+indices_datos = function(df){           # Guarda el indice de las filas que tienen "n.d" 
+  indices <- which(df$LATITUD == "n.d")
+  return(indices)
+}   # Funcion indices, esta seguramente deberia ser modifica por NA dependiendo la base
+
+filtrar_datos = function(df) {           # Generas una funcion para filtrar las que tienen "n.d"
+  df_filtrado = df[df$LATITUD == "n.d",]
+  return(df_filtrado)
+}  # Funcion para filtrar, esta seguramente debera ser modificado por NA dependiendo la base
+```
+
+En la línea de código anterior, probablemente debas modificarla, ya que en la mayoría de las bases de datos suelen usar "NA" en lugar de "n.d".
+
+```{r aplicar_funciones, message=FALSE, warning=FALSE}
+datos_filtrados = datos       # Crea una variable que almacenará los datos que se utilizarán para filtrar.
+indices_f = indices_datos(df = datos_filtrados)      # Se aplica la funcion indices_datos
+resultados_f = filtrar_datos(df = datos_filtrados)   # Se aplica la funcion filtrar_datos
+resultados_f = resultados_f[c(1:25),]
+```
+
+
+```{r georreferenciar, message=FALSE, warning=FALSE}
+georefenciar_datos = function(df){
+  library(tidygeocoder)  # Carga la libreria que hace georeferencias
+  
+  # Creas matrices vacías para almacenar resultados
+  todos_8 = matrix(data = NA, nrow = 0, ncol = 8)  
+  todos_20 = matrix(data = NA, nrow = 0, ncol = 20) 
+  
+  for (i in 1:nrow(df)) {
+    # Geocodificación de la fila actual
+    result = geo(street = df$CALLE[i], county = df$COLONIA[i], postalcode = df$CP[i],
+                 city = df$MUNICIPIO[i], state = "Hidalgo", country = "Mexico", 
+                 method = "osm", full_results = TRUE)
+    
+    result = as.matrix(result)  # Convierte a matriz
+    numero_columnas = ncol(result)  # Obtiene el número de columnas
+    
+    # Imprimir progreso y datos intermedios
+    print(paste("Fila:", i, "- Número de columnas:", numero_columnas))
+    
+    # Dependiendo del número de columnas, se asigna a diferentes matrices
+    if (numero_columnas == 8) {
+      todos_8 = rbind(todos_8, result)
+    } else if (numero_columnas == 20) {
+      todos_20 = rbind(todos_20, result)
+    }
+  }
+  
+  # Verificación antes de devolver resultados
+  if (nrow(todos_20) > 0) {
+    print("Matriz final - todos_20:")
+    print(todos_20)
+    return(as.matrix(todos_20))  # Regresa la matriz final
+  } else {
+    print("No se encontraron resultados con 20 columnas.")
+    return(NULL)
+  }
+}
+```
+
+Uso de la funcion
+```{r funcion, message=FALSE, warning=FALSE,  echo=TRUE, results='hide'}
+georefencias_correctas = georefenciar_datos(df = resultados_f)
+```
+
+### Nota:
+Este código para georreferenciar no es muy preciso. Hicimos una prueba con 100 lugares y solo logró georreferenciar 74 de ellos. Al comparar esos 74 lugares con sus ubicaciones reales, solo 7 estaban correctos. Las demás tenían una diferencia de al menos 10 metros, y la mayor diferencia fue de 30 kilómetros.
+
+Este método para georreferenciar es 100% gratuito. Sin embargo, hay otras opciones, como la API de Google, que tienen un límite en el número de usos y requieren una tarjeta de crédito para acceder.
