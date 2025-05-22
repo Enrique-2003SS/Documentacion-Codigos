@@ -1,0 +1,131 @@
+---
+title: "Mapa Lineas"
+author: "Eduardo Alanis"
+date: "2025-03-19"
+output: html_document
+---
+Librerias que se usaran:
+
+```{r librerias, include= T, message=FALSE, warning=FALSE}
+library(leaflet)
+library(htmlwidgets)
+library(sf)
+library(leaflet.extras)
+library(leaflegend)
+library(leafem)
+library(dplyr)
+library(htmltools)
+```
+
+Abres las bases de datos y les asignas el mismo sistema de referencia de coordenadas (CRS) para que todo lo que se haga tenga sentido, en el apartado de `sf::st_length(x = lineas)` calcula la distancia usando la geometría de la base.
+
+
+```{r abrir_bases, include= T, message=FALSE, warning=FALSE}
+# setwd("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/")
+lineas =  sf::read_sf("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/Shapes Hidalgo en mapas/Movilidad y Conectividad/Red_Ferroviaria.shp")
+municipios = sf::read_sf("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/municipiosjair/municipiosjair.shp")
+
+lineas = sf::st_transform(lineas, crs = st_crs(municipios) ) 
+medida = sf::st_length(x = lineas) # Apartir de la geometry
+medida = medida/1000
+lineas$medida = medida
+lineas = lineas |> dplyr::mutate(medida = as.numeric(medida))
+```
+
+Generas las otras bases de datos para las capas.
+
+```{r filtrado, include= T, message=FALSE, warning=FALSE}
+carga = lineas |> dplyr::filter(SERVICIO == "Transporte de carga" )
+desocupada = lineas |> dplyr::filter(SERVICIO == "Desocupada" )
+pasajeros = lineas |> dplyr::filter(SERVICIO == "Transporte de pasajeros" )
+```
+
+Generacion del mapa, la unica linea nueva en este codigo es la siguiente:
+- `htmlwidgets::onRender` Esta es una manera digamos de manera forzada de poner un titulo sobre las capas, que usa recursos de HTML lo cual es muy **importante para estudiar mas** sobre su funcionammiento para el uso en otros codigos y en la mejora de hacer mapas.
+
+- Uso de `addPolylines` por el tipo de geometria, pero los parametros dentro de ella es analogo ha otros.
+
+
+
+
+```{r mapa, include= T, message=FALSE, warning=FALSE}
+mapa_web = leaflet() |>
+  addTiles() |>
+  addPolylines(data = carga, 
+                label =  paste("La longitud es:","<b>",round(x = carga$medida, digits = 2),"</b>", "km") |> lapply(FUN =  function(x){htmltools::HTML(x)}), 
+                group = "Transporte de carga", 
+                color = "green") |>
+  addPolylines(data = desocupada,
+               label =  paste("La longitud es:","<b>",round(x = desocupada$medida, digits = 2),"</b>", "km") |> lapply(FUN =  function(x){htmltools::HTML(x)}), 
+               group = "Desocupada", 
+               color = "red")  |>
+  addPolylines(data = pasajeros,
+               label =  paste("La longitud es:","<b>",round(x = pasajeros$medida, digits = 2),"</b>", "km") |> lapply(FUN =  function(x){htmltools::HTML(x)}), 
+               group = "Transporte de pasajeros", 
+               color = "blue") |>
+  addLayersControl(overlayGroups = c("Transporte de carga", "Desocupada", "Transporte de pasajeros"),       # OverlayGROUPS pueden ser ambos
+                   position = "topright", 
+                   options = layersControlOptions(collapsed = F) # Quitar las hojitas donde aparecen las opciones
+  ) |>
+  hideGroup(group = c("Transporte de carga","Transporte de pasajeros" )) |>
+  leaflegend::addLegendImage(images = c("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/facebook_icon.png", "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/WhatsApp_icon.png", "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/facebook_icon.png"), 
+                             labels = c("A", "B", "C"), position = "bottomright", 
+                             #title = "Descansito Simbologia"
+                             title = htmltools::tags$div("Simbologia", style = "font-size: 24px; text-align: center;")) |>
+  #addLogo(img = "https://raw.githubusercontent.com/JairEsc/Gob/main/Hidalgo%20en%20Mapas/sigeh3.png", position = "bottomleft")
+  addLogo(img = "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/sigeh3.png", position = "bottomleft", src = "local")  |>
+  # htmlwidgets::onRender("
+  #   function(el, x) {
+  #     console.log('texto de prueba')     
+  #     T=document.getElementsByClassName('leaflet-control-layers leaflet-control-layers-expanded leaflet-control')
+  #     div_leaflet=T[0]
+  #     var child = document.createElement('div');
+  #     child.innerText= 'A'; 
+  #     child.style.textAlign = 'center' 
+  #     child.style.fontWeight = 'bold' 
+  #     
+  #     div_leaflet.insertBefore(child, div_leaflet.firstChild)
+  #   }")
+  addPolylines(data = carga, 
+                label =  paste("La longitud es:","<b>",round(x = carga$medida, digits = 2),"</b>", "km") |> lapply(FUN =  function(x){htmltools::HTML(x)}), 
+                group = "Transporte de carga", 
+                color = "green") |>
+  addPolylines(data = desocupada,
+               label =  paste("La longitud es:","<b>",round(x = desocupada$medida, digits = 2),"</b>", "km") |> lapply(FUN =  function(x){htmltools::HTML(x)}), 
+               group = "Desocupada", 
+               color = "red")  |>
+  addPolylines(data = pasajeros,
+               label =  paste("La longitud es:","<b>",round(x = pasajeros$medida, digits = 2),"</b>", "km") |> lapply(FUN =  function(x){htmltools::HTML(x)}), 
+               group = "Transporte de pasajeros", 
+               color = "blue") |>
+  addLayersControl(overlayGroups = c("Transporte de carga", "Desocupada", "Transporte de pasajeros"),       # OverlayGROUPS pueden ser ambos
+                   position = "topright", 
+                   options = layersControlOptions(collapsed = F) # Quitar las hojitas donde aparecen las opciones
+  ) |>
+  hideGroup(group = c("Transporte de carga","Transporte de pasajeros" )) |>
+  leaflegend::addLegendImage(images = c("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/facebook_icon.png", "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/WhatsApp_icon.png", "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/facebook_icon.png"), 
+                             labels = c("A", "B", "C"), position = "bottomright", 
+                             #title = "Descansito Simbologia"
+                             title = htmltools::tags$div("Simbologia", style = "font-size: 24px; text-align: center;")) |>
+  #addLogo(img = "https://raw.githubusercontent.com/JairEsc/Gob/main/Hidalgo%20en%20Mapas/sigeh3.png", position = "bottomleft")
+  addLogo(img = "C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/sigeh3.png", position = "bottomleft", src = "local")  #|>
+  # htmlwidgets::onRender("
+  #   function(el, x) {
+  #     console.log('texto de prueba')
+  #     T=document.getElementsByClassName('leaflet-control-layers leaflet-control-layers-expanded leaflet-control')
+  #     div_leaflet=T[0]
+  #     var child = document.createElement('div');
+  #     child.innerText= 'A';
+  #     child.style.textAlign = 'center'
+  #     child.style.fontWeight = 'bold'
+  # 
+  #     div_leaflet.insertBefore(child, div_leaflet.firstChild)
+  #   }")
+```
+
+
+Mapa
+
+```{r plot, include= T, message=FALSE, warning=FALSE}
+# mapa_web
+```
