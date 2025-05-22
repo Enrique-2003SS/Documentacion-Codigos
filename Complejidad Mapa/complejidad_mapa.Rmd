@@ -1,0 +1,161 @@
+---
+title: "Mapa Complejidad"
+author: "Eduardo Alanis"
+date: "2025-03-19"
+output: html_document
+---
+
+# Mapa de Complejidad Economica
+
+Definicion de las librerias que se van ha utilizar.
+
+```{r librerias, include= T, message=FALSE, warning=FALSE}
+library(leaflet)
+library(leaflet.extras)
+library(leafem)
+library(htmlwidgets)
+library(sf)
+```
+
+En la siguiente lineas de codigos realizas lo siguiente:
+
+- **Lectura de datos económicos y extracción de la clave municipal:**
+  - Se carga el data frame de complejidad con la columna `CVEGEO`.
+  - Se extraen los dígitos 3 a 5 de `CVEGEO` y se convierten a númerico, para despues hacer un `merge` con otro data.frame.
+
+- **Carga y preparación del shapefile:**
+  - Se utiliza la librería `sf` para leer el archivo `shp` con las geometrías de los municipios de Hidalgo.
+  - Se seleccionan las columnas `cve_mun`, `nom_mun` y la geometría se agrega de manera automatica.
+  - Se convierte la columna `cve_mun` a numerico para que coincida con `CVEGEO` del primer data.frame.
+
+- **Unión y segmentación de los datos:**
+  - Se realiza una unión (`merge`) entre los datos económicos y el shapefile usando `clave_mun` y `CVEGEO` como claves.
+  - Se separa el resultado en tres data frames: `ice_2015`, `ice_2020A` y `ice_2024B`, cada uno ordenado según su índice de complejidad para poder hacer la variable de `ranking` en cada uno.
+
+
+```{r preparacion_datos, include= T, message=FALSE, warning=FALSE}
+#setwd("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet")
+
+datos = read.csv("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/Complejidad_Economica_Hidalgo.csv")
+
+datos = datos |> dplyr::mutate(CVEGEO = as.numeric(substr(x = CVEGEO, start = 3, stop = 5)))
+
+geometrias = sf::read_sf("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Practicas/Chamba/Leaflet/municipiosjair/municipiosjair.shp")
+geometrias = geometrias |> dplyr::select(CVE_MUN, NOM_MUN) |> dplyr::mutate(CVE_MUN = as.numeric(CVE_MUN))
+
+datos = merge(x = datos, y = geometrias, by.x = "CVEGEO", by.y = "CVE_MUN", all.x = T)
+
+ice_2015 = datos |> dplyr::select(CVEGEO, ICE_Personal_2015., NOM_MUN, geometry) |> sf::st_as_sf()
+ice_2020A = datos |> dplyr::select(CVEGEO, ICE_Personal_2020A, NOM_MUN, geometry) |> sf::st_as_sf()
+ice_2024B = datos |> dplyr::select(CVEGEO, ICE_Personal_2024B, NOM_MUN, geometry) |> sf::st_as_sf()
+
+ice_2015 = ice_2015[order(ice_2015$ICE_Personal_2015., decreasing = T), ]
+ice_2015$ranking =  c(1:nrow(ice_2015))
+
+ice_2020A = ice_2020A[order(ice_2020A$ICE_Personal_2020A, decreasing = T), ]
+ice_2020A$ranking =  c(1:nrow(ice_2020A))
+
+ice_2024B = ice_2024B[order(ice_2024B$ICE_Personal_2024B, decreasing = T), ]
+ice_2024B$ranking =  c(1:nrow(ice_2024B))
+```
+
+Se define una paleta de colores usando la función `colorNumeric` de la librería `leaflet`. Esta función crea una escala de colores basada en valores numéricos. Para cada año, se genera una función de color que asigna tonos según el valor máximo y mínimo de la complejidad económica. Los pasos de la escala se calculan como:
+
+\[
+\text{paso} = \frac{\text{valor_maximo} - \text{valor_minimo}}{84}
+\]
+
+El 84 representa es por el numero de municipios del estado.
+
+
+```{r paletas_colores, include= T, message=FALSE, warning=FALSE}
+paleta_2015 = colorNumeric(palette = c("green", "yellow", "red"), domain = seq(min(ice_2015$ICE_Personal_2015.),  max(ice_2015$ICE_Personal_2015.) ,(max(ice_2015$ICE_Personal_2015.) -  min(ice_2015$ICE_Personal_2015.))/84), reverse = T)
+
+paleta_2020A = colorNumeric(palette = c("green", "yellow", "red"), domain = seq(min(ice_2020A$ICE_Personal_2020A), max(ice_2020A$ICE_Personal_2020A) ,(max(ice_2020A$ICE_Personal_2020A) -  min(ice_2020A$ICE_Personal_2020A))/84), reverse = T)
+
+paleta_2024B = colorNumeric(palette = c("green", "yellow", "red"), domain = seq(min(ice_2024B$ICE_Personal_2024B), max(ice_2024B$ICE_Personal_2024B) ,(max(ice_2024B$ICE_Personal_2024B) -  min(ice_2024B$ICE_Personal_2024B))/84), reverse = T)
+```
+
+
+Para generar un mapa en R usando `leaflet`, podemos utilizar el siguiente código: `leaflet() |> addTiles()`. Esto crea un mapa interactivo con una capa base de `addTiles()`.
+
+Para agregar elementos geométricos, debemos conocer el tipo de geometría con el que estamos trabajando. Puede ser: **`polygons`** (polígonos), **`lines`** (líneas), **`points`** (puntos), **`rasters`** (raster), etc.
+
+Por ejemplo, para agregar polígonos, usamos `addPolygons()` con los siguientes parámetros:
+
+- **`label`**: Texto que aparece cuando pasamos el mouse sobre el objeto.
+- **`popup`**: Información que se muestra al hacer clic sobre el objeto.
+- **`group`**: Permite organizar capas para facilitar su gestión.
+- **`color`**: Define el color del borde del objeto, utilizando una paleta predefinida.
+
+Donde en este caso, notemos que en el apartado **`popup`** vamos a escribir como en `HTML` por eso pasamos esa funcion con el `lapply`.
+
+El apartado `addLayersControl` permite gestionar las capas del mapa. Sus principales parámetros son:
+
+- **`baseGroups`**: Capas base que no pueden superponerse.
+- **`overlayGroups`**: Capas que pueden visualizarse juntas.
+- **`position`**: Define la posición del selector de capas en el mapa.
+- **`options`**: Se usa principalmente `layersControlOptions` donde en este parametro a nosotros nos interesa usar `collapsed = FALSE` para mostrar el selector expandido.
+
+
+El apartado **`hideGroup`** se utiliza para que algunas capas del mapa estén ocultas al iniciarlo.
+
+- **`group`**: Define las capas que empezarán ocultas.
+
+
+El apartado **`addSearchFeatures`** permite realizar búsquedas dentro del mapa. Sus parámetros principales son:
+
+- **`targetGroups`**: Especifica el data.frame en el que se realizará la búsqueda, utilizando el `label` para identificar la información.
+- **`options`**: Aquí se usan las `searchFeaturesOptions`, que incluyen:
+  - **`zoom`**: Acerca el mapa al objeto encontrado.
+  - **`openPopup`**: Hace un`popup` sobre el objeto hallado.
+  - **`position`**: Determina la ubicación de la opción de búsqueda en el mapa.
+  - **`hideMarkerOnCollapse`**: Actualmente no conozco su función exacta.
+
+El apartado **`addLogo`** permite pegar un logo dentro del mapa. Sus parámetros principales son:
+- **`img`**: Link o direccion local de la imagen.
+- **`position`**: La posicion dentro del mapa.
+- **`src`**: Indica si sera local la imagen o desde la web se cargara.
+
+
+```{r mapa, include= T, message=FALSE, warning=FALSE}
+mapa_web = leaflet() |>
+  addTiles() |>
+  addPolygons(data = ice_2024B, 
+              label = ice_2024B$NOM_MUN, 
+              popup =  paste("Municipio:", "<b>", ice_2024B$NOM_MUN ,"</b>",  "<br>", "Indice de Complejidad: ",  "<b>" , round(ice_2024B$ICE_Personal_2024B , digits = 2) ,"</b>", "<br>", "Ranking:", "<b>", ice_2024B$ranking ,"</b>") |> lapply(FUN = function(x) { htmltools::HTML(x)}),
+              group = "2024B", 
+              color = paleta_2024B(ice_2024B$ICE_Personal_2024B)) |>
+  addPolygons(data = ice_2020A, 
+              label = ice_2020A$NOM_MUN, 
+              popup =  paste("Municipio:", "<b>", ice_2020A$NOM_MUN ,"</b>", "<br>", "Indice de Complejidad: ",  "<b>" , round(ice_2020A$ICE_Personal_2020A, digits = 2) ,"</b>", "<br>", "Ranking:", "<b>", ice_2020A$ranking ,"</b>") |> lapply(FUN = function(x) { htmltools::HTML(x)}),
+              group = "2020A", 
+              color = paleta_2020A(ice_2020A$ICE_Personal_2020A)) |>
+  addPolygons(data = ice_2015, 
+              label = ice_2015$NOM_MUN, 
+              popup =  paste("Municipio:", "<b>", ice_2015$NOM_MUN ,"</b>", "<br>", "Indice de Complejidad: ",  "<b>" , round(ice_2015$ICE_Personal_2015., digits = 2) ,"</b>", "<br>", "Ranking:", "<b>", ice_2015$ranking ,"</b>") |> lapply(FUN = function(x) { htmltools::HTML(x)}),
+              group = "2015", 
+              color = paleta_2015(ice_2015$ICE_Personal_2015.) ) |>
+  addLayersControl(baseGroups = c("2024B", "2020A", "2015"),       # OverlayGROUPS pueden ser ambos
+                   position = "topright", 
+                   options = layersControlOptions(collapsed = F)) |>
+  hideGroup(group = c("2020A", "2015")) |>
+  addSearchFeatures(targetGroups = c("2024B"), 
+                    options = searchFeaturesOptions(
+                      zoom = 16,    # Realiza Zoom 
+                      openPopup = T,  #Simula clic
+                      position =  "bottomleft",
+                      hideMarkerOnCollapse = FALSE
+                    ))  |>
+  addLogo(img = "sigeh3.png", position = "bottomleft", src = "local")  
+```
+
+Vizualizacion del mapa
+
+```{r impresion, include= T, message=FALSE, warning=FALSE}
+mapa_web
+```
+
+
+
+Nota: Checar los codigos de mapa_puntos y mapa_lines para verificar cuando tienes informacion en que puntos cae, mas funciones, etc.
