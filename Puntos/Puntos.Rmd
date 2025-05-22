@@ -1,0 +1,77 @@
+---
+title: "Puntos del plano cartesiano a Geometry"
+subtitle: "Latitud y Longitud a coordenadas"
+author: "Eduardo Alanis"
+date: "2024-10-02"
+output: html_document
+---
+
+
+Unicamente debes copilar la funcion
+```{r funcion, message=FALSE, warning=FALSE}
+puntos = function(x,y){
+  library(sf) # Carga de la libreria
+  # Crea el primer punto espacial a partir de las coordenadas x[1] y y[1].
+  punto = st_point(c(x[1], y[1]))
+  
+  # Convierte el punto en una geometría de objeto simple (Simple Feature Geometry - SFC).
+  punto_sfc = st_sfc(punto)
+  
+  # Convierte el objeto SFC en un objeto de tipo `sf` (Spatial Feature - característica espacial).
+  punto_bueno = st_as_sf(punto_sfc)
+  
+  # Crea una tabla inicial con el primer punto espacial.
+  tabla = rbind(punto_bueno)
+  
+  # Itera sobre las demás filas de la tabla y hace todo lo anterior con cada fila
+  for (i in 2:nrow(datos)) {
+    punto = st_point(c(x[i], y[i]))
+    punto_sfc <- st_sfc(punto)
+    punto_bueno = st_as_sf(punto_sfc)
+    tabla = rbind(tabla, punto_bueno)
+  }
+  tabla = st_set_crs(tabla, 4326)
+  return(tabla)
+}
+```
+
+### Ejemplo de uso
+Carga de librerias, estas son posibles que se pueden usar:
+```{r librerias, message=FALSE, warning=FALSE}
+library(haven)    # Carga la librería 'haven' para leer y escribir archivos SPSS, Stata y SAS.
+library(foreign)  # Carga la librería 'foreign', utilizada para leer archivos en diferentes formatos estadísticos.
+library(sf)       # Carga la librería 'sf' para manejar y analizar datos espaciales (geometrías vectoriales).
+library(readxl)   # Carga la librería 'readxl' para leer archivos Excel.
+```
+
+Carga de datos: 
+```{r datos, message=FALSE, warning=FALSE}
+datos = read_sav("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Agosto/Archivos Utilizados/26Agosto/Base Hidalgo Julio 2024 con MPO.SAV", )[c(1:100),]
+```
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Puntos_imagenes/base de datos.png" alt="Base de datos_estatal" width="950"/>
+
+
+Como se usa la funcion:
+```{r uso, message=FALSE, warning=FALSE}
+# El siguiente es un ejemplo de como hacer uso de la funcion
+ejemplo = puntos(x = datos$Longitude, y = datos$Latitude)  
+```
+
+Juntar la geometria obtenida con la base original
+
+```{r combinar, message=FALSE, warning=FALSE}
+datos2 = cbind(datos, ejemplo)  # Union en columnas
+datos2 = st_as_sf(datos2)       # Pasar a formato sf
+```
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Puntos_imagenes/pegado.png" alt="Base de datos_estatal" width="950"/>
+
+
+Guardar lo obtenido en un archivo shp:
+```{r guardado, message=FALSE, warning=FALSE}
+write_sf(datos2, "C:/Users/eagel/OneDrive/Escritorio/shp/b.shp")   # Das el archivo que vas a guardar el shp y el directorio donde se guardara.
+```
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Puntos_imagenes/guardado.png" alt="Base de datos_estatal" width="950"/>
+
