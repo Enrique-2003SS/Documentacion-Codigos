@@ -1,0 +1,134 @@
+---
+title: "Indice de Rezago Social"
+author: "Eduardo Alanis"
+date: "2024-10-14"
+output: html_document
+---
+
+
+### ¿Cómo se construye el Índice de Rezago Social?
+
+El Índice de Rezago Social se construye a través de la técnica estadística de componentes principales. Dicha técnica analiza la varianza de los indicadores para crear ponderadores de cada uno de ellos, lo que permite ordenar y resumir diferentes dimensiones en un solo indicador.(CONEVAL)
+
+### Componentes principales
+
+El Análisis de Componentes Principales (PCA) es una técnica matemática que sirve para reducir la cantidad de variables en un conjunto de datos, manteniendo la mayor cantidad de información posible.
+
+1. **Estandarización de los datos**:  
+   Para que todas las variables tengan la misma importancia, primero se transforman a una misma escala, es decir, se estandarizan.
+
+2. **Cálculo de la matriz de covarianza**:  
+   El siguiente paso es entender cómo se relacionan las variables entre sí. Para ello, se calcula una matriz de covarianza.
+
+3. **Cálculo de los valores propios (eigenvalues) y vectores propios (eigenvectors)**:  
+   La matriz de covarianza se descompone en valores propios y vectores propios. Cada vector propio es un "eje" nuevo en el que se proyectan los datos, y los valores propios nos dicen cuánta información o varianza está contenida en ese eje.
+
+4. **Seleccionar los componentes principales**:  
+   Los componentes principales son los vectores propios con los valores propios más grandes. El objetivo es quedarte solo con los componentes que explican la mayor parte de la varianza, es decir, la mayor cantidad de información. En este caso, únicamente nos quedaremos con el primer componente.
+
+5. **Indicador**:  
+   Se obtiene multiplicando los datos estandarizados por el primer componente principal, el cual nos indicará los pesos.
+
+
+### Codigo:
+Se dara la funcion que unicamente deberas copilar.
+
+```{r funcion, message=FALSE, warning=FALSE}
+indice_rezago = function(base){
+  base = as.data.frame(lapply(base, as.numeric))              # Verificas que todas las columnas sean numerico
+  componentes = prcomp(base,  center = TRUE, scale. = TRUE)   # Aplicas analis de componentes
+  indice = scale(scale(as.matrix(base)) %*% as.matrix(componentes$rotation[,1])) # Multiplicas la matriz estandarizada por el primer componente para obtener los pesos.
+  return(as.data.frame(indice))
+}
+```
+
+Ejemplo de uso de la funcion:
+```{r carga, message=FALSE, warning=FALSE}
+library(readxl)     # Libreria para abrir archivos Excel
+datos = read_xlsx("C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Septiembre/Archivos Utilizados/Indice_Rezago_Social/Municipal/IRS_entidades_mpios_2020.xlsx") # Carga de datos
+```
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Indice_Rezago_imagenes/datos.png" alt="Base de datos" width="950"/>
+
+**Filtracion de datos(opcional usar esta linea de codigo)**. Al cargar la base de datos en R, su formato no es el mismo que en Excel. En nuestro caso, los nombres de las columnas son los valores de la fila 5. Como solo nos interesan los "Indicadores de Rezago Social", eliminamos las primeras 6 filas y las últimas 4. Además, solo utilizamos las columnas de la 4 a la 14. 
+```{r Filtracion, message=FALSE, warning=FALSE}
+# Si tu base ya es correcta puedes ignorar esto
+colnames(datos) = datos[5,] # Cambiar nombre a las columnas
+datos = datos[ -c(1:5) ,]   # Filtrar datos
+estados = as.matrix(datos[-c(1, 34:38), 2]) # Nombre de los estados
+```
+
+Nuestros datos con los que vamos a trabajar viene dado por:
+```{r datos_bien, message=FALSE, warning=FALSE}
+# Datos de interes
+datos_estatal = datos[-c(1, 34:38) , c(4:14)] # Datos con los que trabajaremos filtrados
+```
+
+Los `datos_estatal` su visualizacion es la siguiente:
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Indice_Rezago_imagenes/datos_interes.png" alt="Base de datos_estatal" width="950"/>
+
+Uso de la funcion:
+```{r funcion1, message=FALSE, warning=FALSE}
+indice = indice_rezago(base = datos_estatal)  # Haces uso de la funcion
+```
+Del cual tenemos que algunos valores de nuestro primer valor propio son los siguientes:
+```{r valor_propio, echo=FALSE, message=FALSE, warning=FALSE}
+componentes = function(base){
+  base = as.data.frame(lapply(base, as.numeric))              # Verificas que todas las columnas sean numerico
+  componentes = prcomp(base,  center = TRUE, scale. = TRUE)   # Aplicas analis de componentes
+  indice = scale(as.matrix(base)) %*% as.matrix(componentes$rotation[,1]) # Multiplicas la matriz estandarizada por el primer componente para obtener los pesos.
+  return(componentes)
+}
+cc = componentes(base = datos_estatal)
+c1 = cc$rotation[,1]
+
+t(head(c1, 16))
+```
+
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Indice_Rezago_imagenes/valor.png" alt="Base de datos_estatal" width="950"/>
+
+El cual observamos que coincidimos con los que tiene CENEVAL
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Indice_Rezago_imagenes/pesos.png" alt="Pesos" width="950"/>
+
+Donde el codigo nos dara el `Indice de Rezago` de la siguiente manera:
+```{r impresion, message=FALSE, warning=FALSE}
+t(head(indice, 5))
+```
+
+Este viene en orden del cual tiene la base de datos, para visualizar mejor
+```{r bonito, message=FALSE, warning=FALSE}
+indice = cbind(estados, indice)
+colnames(indice) = c("Estado", "Indice")
+head(indice, 5)
+```
+
+Del cual observamos que coincide con el realizado con CONEVAL
+<img src="C:/Users/eagel/OneDrive/Escritorio/Lalo/Escuela/Servicio Social/Codigos importantes/Documentacion/Indice_Rezago_imagenes/coneval.png" alt="Pesos" width="950"/>
+
+
+
+
+### Desgloce de la funcion
+
+```{r funcion2, message=FALSE, warning=FALSE}
+indice_rezago = function(base){
+  base = as.data.frame(lapply(base, as.numeric))              # Verificas que todas las columnas sean numerico
+  componentes = prcomp(base,  center = TRUE, scale. = TRUE)   # Aplicas analis de componentes
+  indice = scale(scale(as.matrix(base)) %*% as.matrix(componentes$rotation[,1])) # Multiplicas la matriz estandarizada por el primer componente para obtener los pesos.
+  return(as.data.frame(indice))
+}
+```
+
+Tenemos que la linea: 
+`componentes = prcomp(base,  center = TRUE, scale. = TRUE)`
+Realiza los pasos 1,2,3 y 4 de analisis de componentes, donde los parametros `center = TRUE` y  `scale. = TRUE` indican que los datos se estandarizaran, se obtendra la matriz de covarianza y el primer vector propio.
+
+
+Mientras que la linea: `indice = scale(scale(as.matrix(base)) % * % as.matrix(componentes$rotation[,1]))`. Realiza el ultimo paso, donde multiplicamos los datos estandarizados por la funcion scale por el primer vector propio y en este caso a lo obtenido lo estandariza.
+
+
+
+
+
+Referencias: https://www.coneval.org.mx/Medicion/IRS/Paginas/Indice_Rezago_Social_2020.aspx
